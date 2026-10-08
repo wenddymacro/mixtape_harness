@@ -218,8 +218,12 @@ expect('index.js exports apply()', /export function apply\(ctx\)/.test(indexSrc)
 expect('index.js imports createUserMessage statically',
   /^import \{ createUserMessage \} from '@deepseek-ai\/dsh-llm';$/m.test(indexSrc), true);
 expect('index.js has NO lazy dynamic import', /await import\(/.test(indexSrc), false);
-expect("index.js registers the post-execute listener",
+expect("index.js registers the post-execute listener on its own context",
   /ctx\.on\('tools\/post-execute'/.test(indexSrc), true);
+expect("index.js also registers it on each agent's context",
+  /agent\.ctx\.on\('tools\/post-execute'/.test(indexSrc), true);
+expect('index.js listens for agent/created', /ctx\.on\('agent\/created'/.test(indexSrc), true);
+expect('index.js listens for agent/disposed', /ctx\.on\('agent\/disposed'/.test(indexSrc), true);
 expect('index.js registers all three guards',
   /GUARDS = \[guardRawData, guardFabricated, guardOffbook\]/.test(indexSrc), true);
 expect('checks.js carries no dsh import', /@deepseek-ai/.test(checksSrc), false);
@@ -243,6 +247,15 @@ expect('postExecuteWarnings exposes the message', postExecuteWarnings(write(DECK
 const blocked = { kind: 'block', feedback: [{ type: 'text', text: 'refused elsewhere' }] };
 const stillBlocked = await postExecuteAdvisory(write(DECK, { content: 'x' }), {}, async () => blocked, stub);
 expect('advisory: a blocked call is left untouched', stillBlocked, blocked);
+
+// The listener is registered on two scopes, so a waterfall can reach it twice for
+// one execution; the shared WeakSet must keep delivery to exactly one advisory.
+const advisedSet = new WeakSet();
+const execOnce = write(DECK, { content: 'x' });
+const firstPass = await postExecuteAdvisory(execOnce, {}, nextFn, stub, advisedSet);
+expect('advised: the first pass attaches one context', firstPass.additionalContexts.length, 1);
+const secondPass = await postExecuteAdvisory(execOnce, {}, nextFn, stub, advisedSet);
+expect('advised: the same execution is not advised twice', secondPass, downstream);
 
 fs.rmSync(ROOT, { recursive: true, force: true });
 

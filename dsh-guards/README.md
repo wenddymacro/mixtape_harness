@@ -51,6 +51,21 @@ whatever came back, adding only `additionalContexts`. With nothing to say it
 returns the downstream decision untouched, so it stays invisible to every other
 plugin in the chain.
 
+**It is registered twice, deliberately.** The waterfall is dispatched on a scope
+derived from the executing agent (`scopeTarget(this, exec.agent)`), while a bundle
+plugin's own context sits at the profile root. `dsh-scope` documents that event
+admission "extends UP" a scope chain, which would make the root an ancestor of
+every agent — but dsh's per-agent guidance is explicit that per-agent behavior
+belongs on `agent.ctx`, obtained in an `agent/created` listener. Which one actually
+dispatches could not be settled by reading the shipped code, so the listener is
+installed on both, and a shared `WeakSet` keeps delivery to **exactly one**
+advisory per execution whichever registration runs.
+
+Registering per agent also closes a real gap rather than only hedging an unknown:
+an agent that already exists when the plugin loads never fires `agent/created`, and
+the plugin-context registration is what covers it. Once the dispatch path is
+confirmed, one of the two can be dropped.
+
 The context itself is built with `createUserMessage` from `@deepseek-ai/dsh-llm`,
 tagged `source: { kind: 'plugin' }` — a kind dsh itself uses for plugin-injected
 context.
@@ -183,7 +198,7 @@ The case matrix is self-contained — no fixtures are checked in:
 node dsh-guards/test.mjs      # bundled node also works
 ```
 
-It runs 70 checks and covers both the allow and deny path of every guard, both
+It runs 75 checks and covers both the allow and deny path of every guard, both
 advisory checks against a miniature project (a runner, a deck, a stage canister
 with each of MISSING / UNWIRED / STALE), the `[B]`, `[E]`, `[F]` and `[G]`
 repairs, and the documented residuals.

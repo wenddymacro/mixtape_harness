@@ -48,23 +48,60 @@ function advisoryContext(text) {
 }
 
 /**
- * Register the three monotonic guards and the advisory listener. Each registration
- * returns its own disposer; returning one cleanup from `apply` is the standard
- * Cordis dispose contract.
+ * Register the three monotonic guards and the advisory listener.
  *
  * A guard registers after the `tools/pre-execute` waterfall, is synchronous, and
  * is monotonic -- a returned reason denies the call and no later listener can turn
- * that denial back into permission. An `accept` post-execute decision "keeps the
- * call successful" while its `additionalContexts` "are ferried on the returned
- * result", so an advisory's write stands and the warning rides along to the model.
+ * that denial back into permission. Guards live in the registry's global layer, so
+ * they apply to every agent without further work.
+ *
+ * The ADVISORY listener is a different matter, and is registered TWICE:
+ *
+ *   - on this plugin's own context, and
+ *   - on each agent's context, from an `agent/created` listener.
+ *
+ * The waterfall is dispatched on a scope derived from the executing agent
+ * (`scopeTarget(this, exec.agent)`), while a bundle plugin's context sits at the
+ * profile root. dsh-scope documents that event admission "extends UP" a scope
+ * chain, which would make the root an ancestor of every agent -- but dsh's
+ * per-agent guidance is explicit that per-agent behavior belongs on `agent.ctx`,
+ * obtained in an `agent/created` listener. Which one actually dispatches could not
+ * be settled by reading the shipped code, so both are registered and a shared
+ * WeakSet makes delivery exactly-once either way.
+ *
+ * Registering on the agent also closes a real gap rather than only hedging an
+ * unknown: an agent that already exists when the plugin loads never fires
+ * `agent/created`, and the context registration is what covers it.
+ *
+ * Once the dispatch path is confirmed, the redundant registration can be dropped.
  */
 export function apply(ctx) {
   const disposers = GUARDS.map((guard) => ctx.tools.guard(guard));
-  const offPostExecute = ctx.on('tools/post-execute', (exec, result, next) =>
-    postExecuteAdvisory(exec, result, next, advisoryContext),
-  );
-  if (typeof offPostExecute === 'function') disposers.push(offPostExecute);
+  const advised = new WeakSet();
+  const perAgent = new Map();
+
+  const listener = (exec, result, next) =>
+    postExecuteAdvisory(exec, result, next, advisoryContext, advised);
+
+  const offOwnContext = ctx.on('tools/post-execute', listener);
+  if (typeof offOwnContext === 'function') disposers.push(offOwnContext);
+
+  const offCreated = ctx.on('agent/created', ({ agent }) => {
+    if (!agent?.ctx || perAgent.has(agent)) return;
+    const dispose = agent.ctx.on('tools/post-execute', listener);
+    if (typeof dispose === 'function') perAgent.set(agent, dispose);
+  });
+  const offDisposed = ctx.on('agent/disposed', ({ agent }) => {
+    const dispose = perAgent.get(agent);
+    if (typeof dispose === 'function') dispose();
+    perAgent.delete(agent);
+  });
+  if (typeof offCreated === 'function') disposers.push(offCreated);
+  if (typeof offDisposed === 'function') disposers.push(offDisposed);
+
   return () => {
     for (const dispose of disposers) if (typeof dispose === 'function') dispose();
+    for (const dispose of perAgent.values()) if (typeof dispose === 'function') dispose();
+    perAgent.clear();
   };
 }

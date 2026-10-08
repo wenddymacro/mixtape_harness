@@ -503,14 +503,21 @@ function postExecuteWarnings(exec) {
  * It does NOT own the decision: it awaits `next()` and spreads whatever came back,
  * adding only `additionalContexts`. With nothing to say it returns the downstream
  * decision untouched, so it stays invisible to every other plugin in the chain.
+ *
+ * `advised`, when given, is a WeakSet of executions already carrying an advisory.
+ * The listener is registered on more than one scope (see index.js), and a
+ * waterfall can therefore reach it twice for one execution; the set makes delivery
+ * exactly-once whichever registration dispatches.
  */
-async function postExecuteAdvisory(exec, result, next, makeContext) {
+async function postExecuteAdvisory(exec, result, next, makeContext, advised) {
   const decision = await next();
   // A blocked or cancelled call needs no advisory about content that was never
   // written. dsh's own post-execute listeners gate on `kind` the same way.
   if (decision?.kind && decision.kind !== 'accept') return decision;
+  if (advised?.has(exec)) return decision;
   const warnings = postExecuteWarnings(exec);
   if (warnings.length === 0) return decision;
+  advised?.add(exec);
   return {
     ...decision,
     additionalContexts: [
