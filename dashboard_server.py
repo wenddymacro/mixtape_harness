@@ -3028,7 +3028,7 @@ function show(id) {
   if (id === 'diffs') loadDiffs();
 }
 
-// ---- Home "Today" to-do: click a box to cross the item off. State persists in localStorage
+// ---- Diffs "Today" to-do: click a box to cross the item off. State persists in localStorage
 // keyed by the TODAY.md date + item index, so reloads keep the checks — but when /sleep writes
 // a NEW TODAY.md (new date), the keys change and every item comes back fresh & uncrossed. ----
 function _applyTodo(li, done) {
@@ -4122,20 +4122,22 @@ def render_scale():
 CASSETTE_ART = "╭──────────────────────────────────────────────────────╮\n│ ┌──────────────────────────────────────────────────┐ │\n│ │ M I X T A P E   H A R N E S S      [ 90 ]        │ │\n│ │ ················································ │ │\n│ │ a research operating system       SIDE A         │ │\n│ └──────────────────────────────────────────────────┘ │\n│                                                      │\n│      .-------.      ________      .-------.          │\n│     | / . . \\ |    /::::::::::\\    | / . . \\ |       │\n│     |  (( o ))  |  |::::::::::::|  |  (( o ))  |     │\n│     | \\ . . / |    \\::::::::::/    | \\ . . / |       │\n│      '-------'      '''''''''''      '-------'       │\n│ ==================================================== │\n│  (o)                                            (o)  │\n╰──────────────────────────────────────────────────────╯"
 
 
-def render_home():
-    """The Home landing (git projects only). Just the enlarged cassette (the harness's face),
-    with the "Today" to-do card beneath it (which stage + what's left today, from TODAY.md,
-    written by /amnesia). The verification-debt scale used to render here too but was moved
-    to the Diffs tab (Scott, 2026-09-20) — home is now just the mixtape image. The scale still
-    lives on the Diffs tab, where refreshScale() weighs it."""
-    # "Today" card — written by /amnesia each run (TODAY.md at the project root): which stage
-    # we're in + what's left to do today. Rendered just below the scale. Absent-safe: if there's
-    # no TODAY.md, the card is omitted.
+def render_today_card():
+    """The "Today" to-do card — written by /amnesia each run (TODAY.md at the project root):
+    which stage we're in + what's left to do today.
+
+    It renders at the top of the Diffs tab, above the verification-debt scale. Those two belong
+    together: /amnesia and /sleep both record unreviewed diffs as carried-forward verification
+    debt, so "what's left today" and "what still needs verifying" are the same page. Home is
+    deliberately just the cassette. Absent-safe: with no TODAY.md it returns ""."""
     today_html = ""
     tf = ROOT / "TODAY.md"
     if tf.exists():
         import datetime as _dt
-        raw = tf.read_text()
+        # Explicit UTF-8: the default codec is the platform's (GBK on a Chinese
+        # Windows), and /amnesia writes em dashes and curly quotes, so a bare
+        # read_text() raises UnicodeDecodeError and takes the whole page down.
+        raw = tf.read_text(encoding="utf-8", errors="replace")
         stage_line, left_items, hdr_date = "", [], ""
         in_left = False
         for ln in raw.splitlines():
@@ -4191,12 +4193,18 @@ def render_home():
             + f'<div style="font-size:0.82rem;color:var(--muted);margin-bottom:0.35rem;"><b>Left to do today:</b> '
             f'<span style="font-weight:400;">click a box to cross it off</span></div>'
             f'<ul style="margin:0;padding:0;font-size:0.9rem;line-height:1.45;">{left_html}</ul></div>')
+    return today_html
+
+
+def render_home():
+    """The Home landing. Just the enlarged cassette (the harness's face), standing alone.
+
+    The verification-debt scale used to render here and moved to the Diffs tab
+    (Scott, 2026-09-20); the "Today" to-do card followed it there (2026-10-08) so the two sit
+    together. refreshScale() weighs the scale on that tab."""
     return (
         f'<div style="max-width:1000px;margin:0 auto;min-height:78vh;display:flex;'
         f'align-items:center;justify-content:center;">'
-        # The cassette — the harness's face, standing completely alone. Both the Today
-        # card and the verification-debt scale were removed from home (Scott, 2026-09-20);
-        # the scale now lives (big, clickable) on the Diffs tab.
         f'<pre class="cassette">{CASSETTE_ART}</pre>'
         f'</div>')
 
@@ -4207,7 +4215,9 @@ def render_diffs():
     pushes). Empty-state if the project is not a git repo. The point (Paul GP essay 8): the
     bounded diff is the unit of verification — review one small change at a time, visually."""
     if not (ROOT / ".git").exists():
-        return ('<p class="empty">This project is not a local git repository yet, so there is no '
+        # The Today card is not git-dependent, so it survives the empty state.
+        return render_today_card() + (
+                '<p class="empty">This project is not a local git repository yet, so there is no '
                 'commit history to show. Diffs appear here once the project is under local git '
                 '(local-only — nothing is ever pushed anywhere).</p>')
     # A GRID of compact commit cards (mirrors the figure cards): click one and it "jumps and
@@ -4330,7 +4340,7 @@ def render_diffs():
         '    </div>'
         '  </div>'
         '</div>')
-    return grid + modal
+    return render_today_card() + grid + modal
 
 
 
@@ -4579,7 +4589,7 @@ def build_page(hypotheses, insights, decisions, pipeline, figures, code_files, d
         ("data", "Data"),
         ("skills_hooks", "Skills & Hooks"),
     ]
-    # Git projects land on a HOME tab (verification-debt scale + today's to-do), gain an in-page
+    # Git projects land on a HOME tab (the cassette alone), gain an in-page
     # Chat tab, and gain a Diffs tab (the bounded diff as the unit of verification) — Diffs sits in
     # The Checklist group, right after Checklist. Gated on a local .git dir so a non-git clone stays lean.
     _home = (ROOT / ".git").exists()
@@ -4621,11 +4631,11 @@ def build_page(hypotheses, insights, decisions, pipeline, figures, code_files, d
 
     _ph = 'color:var(--muted);font-size:0.85rem;line-height:1.6;max-width:60ch;padding:1.5rem;border:1px dashed var(--border);border-radius:8px;background:var(--surface);'
     views = f"""
-    <div class="view{' active' if _home else ''}" id="v-home"><h2>Verification Debt</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Where you always land. The scale weighs work <em>produced</em> (commits) against work <em>verified</em> (diffs you reviewed) — accept a diff in the Diffs tab and it settles live. Below it, today's to-do (from <code>TODAY.md</code>).</p>{render_home() if _home else ''}</div>
+    <div class="view{' active' if _home else ''}" id="v-home"><h2>Verification Debt</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Where you always land. The scale weighs work <em>produced</em> (commits) against work <em>verified</em> (diffs you reviewed) — accept a diff in the Diffs tab and it settles live. Today's to-do (from <code>TODAY.md</code>) and the scale both live on the Diffs tab. All the way down to <code>&lt;pre class="cassette"&gt;</code>.</p>{render_home() if _home else ''}</div>
     <div class="view{'' if _home else ' active'}" id="v-decks"><h2>Decks</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Self-contained HTML decks under <code>decks/html/</code>, embedded live and newest-first. Pick one from the rail; it renders in place.</p>{render_decks()}</div>
     <div class="view" id="v-narrative"><h2>Template</h2>{reorient_html}<p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">The research-appendix genre — the standing pattern the write-up follows. The empty form; no project findings.</p>{render_narrative(hypotheses, insights)}</div>
     <div class="view" id="v-checklist_per_analysis"><h2>Checklist</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">The methodological gate upstream of everything. <strong>Click an analysis row</strong> to open its stages and their exhibits in place — each figure/table flips from the exhibit to its description to the scrollable source code that made it (Esc backs out). Per-analysis grid + Step 0 package cards below. Every DiD analysis instantiates <code>analyses/&lt;slug&gt;/checklist.md</code> from the template — the AI invokes <code>/checklist</code> to walk Steps 0–9.</p>{render_checklist_per_analysis()}</div>
-    <div class="view" id="v-diffs"><h2>Diffs</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Local git history for this project — the <strong>bounded diff as the unit of verification</strong>. Click a commit card and it floats open into a full-screen view — the front shows only what changed (green added / red removed); hit "Show full context" to expand, or flip the card for authored/committed dates and the review sign-off. Use ← → to walk commits. Mark a commit reviewed once you agree with it — that pays down verification debt and the scale settles live. Read-only on git: the dashboard runs <code>git log</code>/<code>git show</code> only, never commits or pushes.</p>{render_diffs()}</div>
+    <div class="view" id="v-diffs"><h2>Diffs</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Local git history for this project — the <strong>bounded diff as the unit of verification</strong>. Click a commit card and it floats open into a full-screen view — the front shows only what changed (green added / red removed); hit "Show full context" to expand, or flip the card for authored/committed dates and the review sign-off. Use ← → to walk commits. Mark a commit reviewed once you agree with it — that pays down verification debt and the scale settles live. Read-only on git: the dashboard runs <code>git log</code>/<code>git show</code> only, never commits or pushes. Today's to-do (from <code>TODAY.md</code>, written by <code>/amnesia</code>) sits at the top — cross an item off to strike it through.</p>{render_diffs()}</div>
     <div class="view" id="v-figures"><h2>Figures</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Flip-card gallery of figures in <code>output/figures/</code>. Click a figure to open it full-size — it spins in, <strong>F</strong> goes true fullscreen, <strong>&larr; &rarr;</strong> cycle between figures, <strong>Esc</strong> returns.</p>{render_figures(figures, insights) if figures else f'<div style="{_ph}">Empty until the pipeline emits figures to <code>output/figures/</code> — nothing appears here that a script did not produce.</div>'}</div>
     <div class="view" id="v-tables"><h2>Tables</h2><div style="{_ph}">Flip-card gallery of pipeline-produced tables. Each card shows a table with the source script that generated it and a status badge; click to flip for provenance and approval state. This tab is populated automatically once the analysis pipeline emits tables to <code>output/tables/</code>. It is empty until then — every table shown traces back to a wired script.</div></div>
     <div class="view" id="v-decisions"><h2>Decisions</h2><div style="{_ph}">Audit trail of binding design decisions. Each entry records the choice that was made, the alternatives that were considered, and the rationale for the pick — so every downstream number can be traced back to a logged decision. Once a decision is committed here, every script downstream must respect it. Empty until the first decision is logged.</div></div>
