@@ -40,50 +40,60 @@ already happened and **must stand**. `exit 2` on a PostToolUse hook is a message
 to the model, not a veto, and the two hooks say so — `no-stale-canon`'s own
 message reads "(warn, not block)".
 
-So they are not guards. They are a `tools/post-execute` listener that attaches an
-`additionalContexts` message. Per the `dsh-tools` documentation, an `accept`
-decision "keeps the call successful" while "either decision may attach
-`additionalContexts`, which are ferried on the returned result" — the result
-stands and the warning rides along to the model. Same outcome, right mechanism.
+So they are not guards. They are a `tools/post-execute` listener that returns the
+downstream decision with the warning **appended to the tool result content**.
+
+**Why content and not `additionalContexts`.** The first version attached an
+`additionalContexts` message, on the strength of the `dsh-tools` documentation
+("either decision may attach `additionalContexts`, which are ferried on the
+returned result"). It delivered nothing that reached anyone: the session log shows
+426 `tool/result` events, **none** carrying `additionalContexts`, and no
+plugin-tagged message was ever spliced into the agent inbox — while the trace
+proved the listener ran and returned a decision carrying them.
+
+Appending to the result content is also the more faithful port. The Python
+originals wrote to stderr and exited 2, and Claude Code surfaces that **as part of
+the tool result** — which is what this does.
 
 Such a listener does not own the decision, so it awaits `next()` and **spreads**
-whatever came back, adding only `additionalContexts`. With nothing to say it
-returns the downstream decision untouched, so it stays invisible to every other
-plugin in the chain.
+whatever came back, adding only that content block. With nothing to say — or when
+the downstream decision replaced a structured `value`, since post-execute forbids
+sending both `value` and `content` — it returns the decision untouched and stays
+invisible to every other plugin in the chain.
 
 **It is registered twice, deliberately.** The waterfall is dispatched on a scope
 derived from the executing agent (`scopeTarget(this, exec.agent)`), while a bundle
 plugin's own context sits at the profile root. `dsh-scope` documents that event
 admission "extends UP" a scope chain, which would make the root an ancestor of
 every agent — but dsh's per-agent guidance is explicit that per-agent behavior
-belongs on `agent.ctx`, obtained in an `agent/created` listener. Which one actually
-dispatches could not be settled by reading the shipped code, so the listener is
-installed on both, and a shared `WeakSet` keeps delivery to **exactly one**
-advisory per execution whichever registration runs.
+belongs on `agent.ctx`, obtained in an `agent/created` listener. Which one
+dispatches could not be settled by reading the shipped code, and the trace settled
+it the other way: **both fire**. A shared `WeakSet` keeps delivery to **exactly
+one** advisory per execution.
 
 Registering per agent also closes a real gap rather than only hedging an unknown:
 an agent that already exists when the plugin loads never fires `agent/created`, and
-the plugin-context registration is what covers it. Once the dispatch path is
-confirmed, one of the two can be dropped.
+the plugin-context registration is what covers it.
 
-The context itself is built with `createUserMessage` from `@deepseek-ai/dsh-llm`,
-tagged `source: { kind: 'plugin' }` — a kind dsh itself uses for plugin-injected
-context.
+## The mistake that cost five restarts
 
-**That import is static, and the module is split because of it.** An earlier
-version imported it lazily so that `index.js` could also be imported by a bare
-`node` run. That was wrong, and it failed in the worst way available: Node
-resolves a dynamic import from the importing file's own location, where dsh's
-packages are not on the module path. The import threw, the message factory
-returned nothing, and **every advisory was dropped silently** — precisely the
-failure mode these guardrails exist to catch, reintroduced by the port.
+This module once contained `import { createUserMessage } from
+'@deepseek-ai/dsh-llm'`, on the theory that a bundle may rely on packages shipped
+with dsh. **It may not.** The plugin then failed to activate with its top-level
+code never having run — a **link-time** resolution failure, before a single
+statement — so no guards and no listener existed at all.
 
-So the logic lives in `checks.js` with no dsh imports at all, and
-`node dsh-guards/test.mjs` exercises it directly. `index.js` is the thin part that
-needs a harness: it statically imports `createUserMessage`, registers the guards
-and the listener, and passes the message factory into `postExecuteAdvisory` as a
-**required argument**. If that import ever fails, the plugin fails loudly at
-activation instead of quietly at runtime.
+What made it so slow to see is a testing error, not a dsh one: a module that fails
+to link registers no guards, and an **"expect allow"** guard test cannot tell "the
+guard permitted this" from "the guard does not exist". The `[G]` escape-hatch check
+is an expect-allow test, and it was read as proof that the new generation had
+loaded when it proved nothing of the kind. Only the block-expecting checks would
+have shown it.
+
+`index.js` now imports nothing outside `./` and `node:` builtins, and a test lists
+any bare specifier so it cannot creep back. The logic lives in `checks.js`, which
+also has no dsh imports, so `node dsh-guards/test.mjs` exercises everything without
+a harness installation — including calling `apply()` against a mock context.
 
 ## What is ported
 
@@ -198,7 +208,7 @@ The case matrix is self-contained — no fixtures are checked in:
 node dsh-guards/test.mjs      # bundled node also works
 ```
 
-It runs 75 checks and covers both the allow and deny path of every guard, both
+It runs 81 checks and covers both the allow and deny path of every guard, both
 advisory checks against a miniature project (a runner, a deck, a stage canister
 with each of MISSING / UNWIRED / STALE), the `[B]`, `[E]`, `[F]` and `[G]`
 repairs, and the documented residuals.
@@ -238,18 +248,28 @@ confirmed before use:
 * The denial is materialized as `content: [{ type: 'text', text: 'Error: <reason>' }], isError: true`.
 * `tools/post-execute` is a waterfall over `(exec, result, next)`. Its decision is
   `{ kind: 'accept', content?, value?, additionalContexts? }` or
-  `{ kind: 'block', feedback, additionalContexts? }`; `accept` keeps the call
-  successful, and `additionalContexts` are ferried on the returned result.
-* A context attached to `additionalContexts` is a message built by
-  `createUserMessage({ content, source: { kind } })` from `@deepseek-ai/dsh-llm`.
-  `source.kind: 'plugin'` is one dsh itself uses.
+  `{ kind: 'block', feedback, additionalContexts? }`. `accept` keeps the call
+  successful and may replace `content`; a decision carrying both `value` and
+  `content` throws, which is why the advisory defers to a replaced value.
+* `additionalContexts` are documented as "ferried on the returned result", but in
+  practice nothing observed here carried them: 426 `tool/result` events, none with
+  the field, and no plugin-tagged message spliced into the agent inbox. The
+  warning is appended to the result **content** instead.
+* `acceptContext` in the loop is
+  `(context) => inbox.splice('next-step', inbox.nextStep.length, 0, [context])`,
+  so a delivered context would appear as an `agent/inbox/spliced` event with
+  `target: 'next-step'` — which is how its absence was established.
 * `apply(ctx)` returning a function is the dispose path, and `ctx.on(event, listener)`
   returns its own disposer.
 * The plugin declares `export const inject = ['tools']`. Without it the loader
   activates the plugin immediately, and touching `ctx.tools` before the registry
-  is mounted throws -- the whole plugin fails to load rather than registering.
-  Declaring the dependency makes activation wait for the service. **This was the
-  cause of the first install appearing to succeed while doing nothing.**
+  is mounted throws. Declaring the dependency makes activation wait for the
+  service. **This was the cause of the first install appearing to succeed while
+  doing nothing.**
+* **A bundle must not import a package that ships with dsh.** Doing so fails at
+  link time, before any top-level statement runs, so the plugin registers nothing
+  and the failure is invisible from outside. `index.js` therefore imports only
+  `node:` builtins and `./checks.js`.
 
 `node:fs` is imported directly and deliberately: a guard must be synchronous,
 while the `ctx.fs` service is asynchronous.

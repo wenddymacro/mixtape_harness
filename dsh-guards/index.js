@@ -3,49 +3,37 @@
  *
  * All of the logic lives in `checks.js`, which carries no dsh imports and is
  * therefore exercisable by a bare `node dsh-guards/test.mjs`. This module is the
- * thin part that needs a harness: it registers the three guards and the
- * post-execute advisory listener, and it builds the context message.
+ * thin part that needs a harness.
  *
  * ---------------------------------------------------------------------------
  * WHY THERE IS NO BARE IMPORT HERE
  *
- * This file originally did `import { createUserMessage } from '@deepseek-ai/dsh-llm'`
- * on the theory that a bundle may rely on packages shipped with dsh. It may not:
- * the plugin then failed to activate with the bundle's top-level code never
- * having run -- a LINK-time resolution failure, before a single statement -- and
- * because the failure was silent from the outside it took five restarts to see.
+ * This file once did `import { createUserMessage } from '@deepseek-ai/dsh-llm'` on
+ * the theory that a bundle may rely on packages shipped with dsh. It may not: the
+ * plugin then failed to activate with its top-level code never having run -- a
+ * LINK-time resolution failure, before a single statement -- and because the
+ * failure is silent from the outside it cost five restarts to see.
  *
- * `createUserMessage` turned out to need nothing from dsh. Its whole
- * implementation is:
- *
- *     function createMessage(input) {
- *       return deepFreeze(structuredClone({ ...input, id: brandString(randomUUID()) }));
- *     }
- *     function createUserMessage(input) { return createMessage({ ...input, role: 'user' }); }
- *
- * an identity, a role tag, and a deep freeze. All three are reproduced below with
- * node builtins, which always resolve. That leaves this module with NO external
- * specifier of any kind, so it cannot fail to link.
+ * The message factory turned out to be unnecessary as well: see the delivery note
+ * in checks.js. This module now imports nothing outside `./` and `node:` builtins,
+ * so it cannot fail to link.
  * ---------------------------------------------------------------------------
  *
- * TEMPORARY INSTRUMENTATION (remove once the advisory path is confirmed).
+ * TEMPORARY INSTRUMENTATION (remove once delivery is confirmed end to end).
  *
- * The advisories produced nothing while the guards worked, and the session log
- * showed no plugin-sourced context. Rather than guess again, every step is traced,
- * including module load, so "did this file even execute?" is answerable directly
- * instead of inferred.
+ * Every step is traced, including module load, so "did this file even execute?"
+ * is answerable directly instead of inferred. The switch sits next to this file
+ * rather than in the OS temp directory, because the host process's `os.tmpdir()`
+ * is not necessarily the one a shell sees -- and a trace that silently fails to
+ * arm would cost another restart.
  *
  *   switch: <this dir>/.trace        (create the file to arm, delete to disarm)
  *   log:    <this dir>/.trace.log
  *
- * The switch sits next to this file rather than in the OS temp directory, because
- * the host process's `os.tmpdir()` is not necessarily the one a shell sees -- and
- * a trace that silently fails to arm would cost another restart. Both files are
- * gitignored, and tracing can never break a guard.
+ * Both are gitignored, and tracing can never break a guard.
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
   guardRawData,
@@ -68,46 +56,15 @@ function trace(entry) {
   }
 }
 
-// The module itself loaded -- the one fact the previous round could only infer.
+// The module itself loaded -- the one fact an earlier round could only infer.
 trace({ where: 'module:loaded' });
 
 export const inject = ['tools'];
 
 const GUARDS = [guardRawData, guardFabricated, guardOffbook];
 
-/** The same deep freeze dsh's own message factory applies. */
-function deepFreeze(value, seen = new WeakSet()) {
-  if (value === null || typeof value !== 'object' || seen.has(value)) return value;
-  seen.add(value);
-  for (const key of Object.keys(value)) deepFreeze(value[key], seen);
-  return Object.freeze(value);
-}
-
-/** A plugin-tagged user message, built exactly as createUserMessage would. */
-function advisoryContext(text) {
-  try {
-    const message = deepFreeze(
-      structuredClone({
-        content: [{ type: 'text', text }],
-        source: { kind: 'plugin' }, // a kind dsh itself uses for plugin-injected context
-        role: 'user',
-        id: randomUUID(),
-      }),
-    );
-    trace({ where: 'advisoryContext', ok: true, keys: Object.keys(message) });
-    return message;
-  } catch (error) {
-    trace({ where: 'advisoryContext', ok: false, error: String(error) });
-    throw error;
-  }
-}
-
 export function apply(ctx) {
-  trace({
-    where: 'apply:enter',
-    hasTools: Boolean(ctx?.tools),
-    hasOn: typeof ctx?.on,
-  });
+  trace({ where: 'apply:enter', hasTools: Boolean(ctx?.tools), hasOn: typeof ctx?.on });
 
   const disposers = [];
   try {
@@ -121,19 +78,24 @@ export function apply(ctx) {
   const perAgent = new Map();
 
   const makeListener = (tag) => async (exec, result, next) => {
-    trace({ where: 'listener:enter', tag, name: exec?.name, argKeys: Object.keys(exec?.arguments ?? {}) });
     try {
       const decision = await next();
       const warnings = postExecuteWarnings(exec);
       trace({
         where: 'listener:checked',
         tag,
+        name: exec?.name,
         alreadyAdvised: advised.has(exec),
         warnings: warnings.length,
         decisionKind: decision?.kind,
+        decisionHasValue: Boolean(decision && Object.hasOwn(decision, 'value')),
         filePath: exec?.arguments?.file_path,
       });
-      return await postExecuteAdvisory(exec, result, next, advisoryContext, advised);
+      const out = await postExecuteAdvisory(exec, result, next, advised);
+      if (out !== decision) {
+        trace({ where: 'listener:delivered', tag, contentBlocks: out?.content?.length ?? 0 });
+      }
+      return out;
     } catch (error) {
       trace({ where: 'listener:threw', tag, error: String(error) });
       throw error;

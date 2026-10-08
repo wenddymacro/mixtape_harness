@@ -496,34 +496,54 @@ function postExecuteWarnings(exec) {
 }
 
 /**
- * The `tools/post-execute` listener body. Pure: the message factory is a REQUIRED
- * argument, so this module needs no dsh import and the decision handling stays
+ * The `tools/post-execute` listener body. Pure and dependency-free, so it stays
  * testable by a bare `node` run.
  *
+ * DELIVERY: the warning is APPENDED TO THE TOOL RESULT CONTENT.
+ *
+ * The first version attached an `additionalContexts` message instead, on the
+ * strength of the dsh-tools documentation ("either decision may attach
+ * additionalContexts, which are ferried on the returned result"). It produced
+ * nothing that reached anyone: the session log shows 426 tool/result events, none
+ * carrying additionalContexts, and no plugin-tagged message was ever spliced into
+ * the agent inbox -- while the trace proved the listener ran and returned a
+ * decision carrying them.
+ *
+ * Appending to the result content is also the more faithful port. The Python
+ * originals signalled by writing to stderr with `exit 2`, and Claude Code surfaces
+ * that **as part of the tool result** -- which is exactly what this does.
+ *
  * It does NOT own the decision: it awaits `next()` and spreads whatever came back,
- * adding only `additionalContexts`. With nothing to say it returns the downstream
- * decision untouched, so it stays invisible to every other plugin in the chain.
+ * adding only that content. With nothing to say, or when the downstream decision
+ * replaces a structured `value` (post-execute forbids sending both `value` and
+ * `content`), it returns the decision untouched and stays invisible.
  *
  * `advised`, when given, is a WeakSet of executions already carrying an advisory.
  * The listener is registered on more than one scope (see index.js), and a
- * waterfall can therefore reach it twice for one execution; the set makes delivery
+ * waterfall therefore reaches it twice for one execution; the set makes delivery
  * exactly-once whichever registration dispatches.
  */
-async function postExecuteAdvisory(exec, result, next, makeContext, advised) {
+async function postExecuteAdvisory(exec, result, next, advised) {
   const decision = await next();
   // A blocked or cancelled call needs no advisory about content that was never
   // written. dsh's own post-execute listeners gate on `kind` the same way.
   if (decision?.kind && decision.kind !== 'accept') return decision;
+  // post-execute throws if a decision carries both, so never add content beside a
+  // replaced value.
+  if (decision && Object.hasOwn(decision, 'value')) return decision;
   if (advised?.has(exec)) return decision;
   const warnings = postExecuteWarnings(exec);
   if (warnings.length === 0) return decision;
   advised?.add(exec);
+
+  const existing = Array.isArray(decision?.content)
+    ? decision.content
+    : Array.isArray(result?.content)
+      ? result.content
+      : [];
   return {
     ...decision,
-    additionalContexts: [
-      ...(decision?.additionalContexts ?? []),
-      ...warnings.map((text) => makeContext(text)),
-    ],
+    content: [...existing, ...warnings.map((text) => ({ type: 'text', text }))],
   };
 }
 

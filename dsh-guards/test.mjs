@@ -250,33 +250,41 @@ expect('apply() wires the listener and the agent lifecycle', wiredEvents.join(',
 expect('apply() returns a disposer', typeof disposePlugin, 'function');
 disposePlugin();
 
-const stub = (text) => ({ role: 'user', content: [{ type: 'text', text }] });
 const downstream = { kind: 'accept', content: [{ type: 'text', text: 'tool output' }] };
 const nextFn = async () => downstream;
 
-const unchanged = await postExecuteAdvisory(write(path.join(PROJ, 'notes.md'), { content: 'x' }), {}, nextFn, stub);
+const unchanged = await postExecuteAdvisory(write(path.join(PROJ, 'notes.md'), { content: 'x' }), downstream, nextFn);
 expect('advisory: nothing to say -> downstream decision returned unchanged', unchanged, downstream);
 
 fs.writeFileSync(DECK, `<img src="${UNWIRED_FIG}">`);
-const advised = await postExecuteAdvisory(write(DECK, { content: 'x' }), {}, nextFn, stub);
-expect('advisory: downstream decision is preserved, not replaced', advised.kind, 'accept');
-expect('advisory: downstream content survives', advised.content, downstream.content);
-expect('advisory: exactly one context attached', advised.additionalContexts.length, 1);
-expect('advisory: the context carries the warning', advised.additionalContexts[0].content[0].text.includes('deck-from-pipeline'), true);
+const advised = await postExecuteAdvisory(write(DECK, { content: 'x' }), downstream, nextFn);
+expect('advisory: the downstream decision is preserved, not replaced', advised.kind, 'accept');
+expect('advisory: the original content survives and the warning is appended',
+  advised.content.length, downstream.content.length + 1);
+expect('advisory: the appended block is the warning text',
+  advised.content[advised.content.length - 1].text.includes('deck-from-pipeline'), true);
+expect('advisory: the appended block is a text block',
+  advised.content[advised.content.length - 1].type, 'text');
 
 expect('postExecuteWarnings exposes the message', postExecuteWarnings(write(DECK, { content: 'x' })).length, 1);
 
 const blocked = { kind: 'block', feedback: [{ type: 'text', text: 'refused elsewhere' }] };
-const stillBlocked = await postExecuteAdvisory(write(DECK, { content: 'x' }), {}, async () => blocked, stub);
+const stillBlocked = await postExecuteAdvisory(write(DECK, { content: 'x' }), {}, async () => blocked);
 expect('advisory: a blocked call is left untouched', stillBlocked, blocked);
 
-// The listener is registered on two scopes, so a waterfall can reach it twice for
+// post-execute throws if a decision carries both `value` and `content`, so a
+// decision that replaced the value must be left alone.
+const withValue = { kind: 'accept', value: 42 };
+const keptValue = await postExecuteAdvisory(write(DECK, { content: 'x' }), {}, async () => withValue);
+expect('advisory: a decision replacing a value is left untouched', keptValue, withValue);
+
+// The listener is registered on two scopes, so a waterfall reaches it twice for
 // one execution; the shared WeakSet must keep delivery to exactly one advisory.
 const advisedSet = new WeakSet();
 const execOnce = write(DECK, { content: 'x' });
-const firstPass = await postExecuteAdvisory(execOnce, {}, nextFn, stub, advisedSet);
-expect('advised: the first pass attaches one context', firstPass.additionalContexts.length, 1);
-const secondPass = await postExecuteAdvisory(execOnce, {}, nextFn, stub, advisedSet);
+const firstPass = await postExecuteAdvisory(execOnce, downstream, nextFn, advisedSet);
+expect('advised: the first pass appends one block', firstPass.content.length, downstream.content.length + 1);
+const secondPass = await postExecuteAdvisory(execOnce, downstream, nextFn, advisedSet);
 expect('advised: the same execution is not advised twice', secondPass, downstream);
 
 fs.rmSync(ROOT, { recursive: true, force: true });
