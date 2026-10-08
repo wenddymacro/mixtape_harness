@@ -203,6 +203,11 @@ confirmed before use:
   `source.kind: 'plugin'` is one dsh itself uses.
 * `apply(ctx)` returning a function is the dispose path, and `ctx.on(event, listener)`
   returns its own disposer.
+* The plugin declares `export const inject = ['tools']`. Without it the loader
+  activates the plugin immediately, and touching `ctx.tools` before the registry
+  is mounted throws -- the whole plugin fails to load rather than registering.
+  Declaring the dependency makes activation wait for the service. **This was the
+  cause of the first install appearing to succeed while doing nothing.**
 
 `node:fs` is imported directly and deliberately: a guard must be synchronous,
 while the `ctx.fs` service is asynchronous.

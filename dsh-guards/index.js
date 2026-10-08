@@ -534,6 +534,17 @@ async function postExecuteAdvisory(exec, result, next, makeContext = defaultMess
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Wait for the tool registry before activating.
+ *
+ * Without this, `apply` runs immediately and touches `ctx.tools.guard(...)` --
+ * if the registry service is not mounted yet, `ctx.tools` is undefined and the
+ * whole plugin throws instead of registering. Declaring the dependency makes the
+ * loader activate us only once `tools` is available (and deactivate us if it ever
+ * goes away), which is the documented way to depend on a service.
+ */
+export const inject = ['tools'];
+
 const GUARDS = [guardRawData, guardFabricated, guardOffbook];
 
 /**

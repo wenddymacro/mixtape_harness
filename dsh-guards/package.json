@@ -1,9 +1,9 @@
 {
   "name": "@local/mixtape-harness-guards",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
-  "description": "Native DSH ports of the harness's pre-execution guardrails: raw data is immutable, no fabricated exhibits, no off-book exhibits.",
+  "description": "Native DSH ports of the harness's five guardrails: raw data is immutable, no fabricated exhibits, no off-book exhibits, no unwired deck exhibits, no stale canon.",
   "exports": {
     ".": "./index.js"
   },

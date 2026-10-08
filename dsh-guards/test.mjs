@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import * as guardsModule from './index.js';
 import {
   apply,
   guardRawData,
@@ -205,6 +206,8 @@ const dispose = apply({
   },
 });
 expect('apply() registers three guards', registered.length, 3);
+expect("module declares inject = ['tools'] so activation waits for the registry",
+  JSON.stringify(guardsModule.inject), '["tools"]');
 expect('apply() registers a post-execute listener', typeof postListener, 'function');
 expect('apply() returns a disposer', typeof dispose, 'function');
 expect('every registered guard is a function', registered.every((g) => typeof g === 'function'), true);
