@@ -261,7 +261,7 @@ def scan_decisions():
     if not idx.exists():
         return []
     results = []
-    for line in idx.read_text().split("\n"):
+    for line in idx.read_text(encoding="utf-8").split("\n"):
         if line.startswith("|") and "---" not in line and "ID" not in line:
             cols = [c.strip() for c in line.split("|")[1:-1]]
             if len(cols) >= 4:
@@ -521,7 +521,7 @@ def render_status(hypotheses, insights, pipeline):
     next_actions_html = ""
     na_file = ROOT / "NEXT_ACTIONS.md"
     if na_file.exists():
-        na_content = na_file.read_text().strip()
+        na_content = na_file.read_text(encoding="utf-8").strip()
         lines = [l.strip() for l in na_content.split("\n") if l.strip() and not l.startswith("#")]
         if lines:
             items = "".join(f'<li>{html_mod.escape(l.lstrip("0123456789. "))}</li>' for l in lines)
@@ -796,7 +796,7 @@ def _stage_folder(slug_dir, step_num):
 def _active_stage_folder(slug_dir):
     """The one folder name ACTIVE_STAGE points at (the 'You Are Here' room), or '' if none."""
     f = slug_dir / "ACTIVE_STAGE"
-    return f.read_text().strip() if f.exists() else ""
+    return f.read_text(encoding="utf-8").strip() if f.exists() else ""
 
 
 def scan_analyses():
@@ -1589,7 +1589,7 @@ def figure_pinned_stages():
             if not (st.is_dir() and ex.exists()):
                 continue
             try:
-                txt = ex.read_text()
+                txt = ex.read_text(encoding="utf-8")
             except Exception:
                 continue
             label = f"{slug_dir.name} · {st.name}"
@@ -1611,7 +1611,7 @@ def _script_is_wired(script_path):
     if not runner.exists():
         return False
     try:
-        txt = runner.read_text()
+        txt = runner.read_text(encoding="utf-8")
     except Exception:
         return False
     base = os.path.basename(script_path)
@@ -1633,7 +1633,7 @@ def scan_decisions_deck():
             title = ""
             try:
                 m = re.search(r"<title>(.*?)</title>",
-                              cand.read_text(errors="ignore")[:2000], re.I | re.S)
+                              cand.read_text(errors="ignore", encoding="utf-8")[:2000], re.I | re.S)
                 if m:
                     title = m.group(1).strip()
             except OSError:
@@ -1767,7 +1767,7 @@ def render_figures(figures, insights=None):
         manual_captions = {}
         if captions_file.exists():
             import json as json_mod
-            manual_captions = json_mod.loads(captions_file.read_text())
+            manual_captions = json_mod.loads(captions_file.read_text(encoding="utf-8"))
         caption = manual_captions.get(f['name']) or (extract_figure_caption(f['script'], f['name']) if f['script'] and f['script'] != 'ad-hoc' else None)
         caption_html = f'<div class="fig-caption">{html_mod.escape(caption)}</div>' if caption else ''
         # Pin-to-stage control (append the figure's path to a checklist stage's exhibits.md via /api/pin-figure).
@@ -2144,7 +2144,7 @@ def render_narrative(hypotheses, insights):
     nf = ROOT / "narrative.md"
     # If narrative.md has real content (more than the placeholder), use it
     if nf.exists():
-        content = nf.read_text().strip()
+        content = nf.read_text(encoding="utf-8").strip()
         if len(content) > 100 and not content.startswith("# Narrative\n\nThe narrative will be assembled"):
             # Check for drift
             drift_warnings = check_narrative_drift(content, hypotheses)
@@ -2302,7 +2302,7 @@ def render_skills():
 def render_manuscript():
     mf = ROOT / "manuscript_outline.md"
     if mf.exists():
-        return mini_md(mf.read_text())
+        return mini_md(mf.read_text(encoding="utf-8"))
     return '<p class="empty">No manuscript_outline.md found.</p>'
 
 
@@ -2327,26 +2327,26 @@ def render_stages():
         active = ""
         amf = stages_dir.parent / "ACTIVE_STAGE"
         if amf.exists():
-            active = amf.read_text().strip()
+            active = amf.read_text(encoding="utf-8").strip()
         rooms = sorted([d for d in stages_dir.iterdir() if d.is_dir()])
 
         def _count_boxes(p):
             if not p.exists():
                 return 0, False
-            t = p.read_text()
+            t = p.read_text(encoding="utf-8")
             return t.count("- [ ]"), ("- [x]" in t or "- [X]" in t)
 
         def _count_bullets(p):
             if not p.exists():
                 return 0
-            return sum(1 for l in p.read_text().splitlines()
+            return sum(1 for l in p.read_text(encoding="utf-8").splitlines()
                        if l.strip().startswith(("- ", "* ")) and "[ ]" not in l and "[x]" not in l)
 
         def _has_content(p):
             # findings/exhibits "done" = file exists with real prose beyond the header
             if not p.exists():
                 return False
-            body = _re.sub(r"^---.*?---", "", p.read_text(), flags=_re.S)
+            body = _re.sub(r"^---.*?---", "", p.read_text(encoding="utf-8"), flags=_re.S)
             body = _re.sub(r"^#.*$", "", body, flags=_re.M)
             return len(body.strip()) > 120
 
@@ -2367,7 +2367,7 @@ def render_stages():
             n_todo, _ = _count_boxes(room / "todo.md")
             has_find = _has_content(room / "findings.md")
             ex = room / "exhibits.md"
-            n_exhib = sum(1 for l in (ex.read_text().splitlines() if ex.exists() else [])
+            n_exhib = sum(1 for l in (ex.read_text(encoding="utf-8").splitlines() if ex.exists() else [])
                           if l.strip().startswith("- ")) if ex.exists() else 0
             glow = (f"box-shadow:0 0 0 2px {C['todo']},0 6px 22px rgba(217,118,6,.25);"
                     if is_active else "box-shadow:0 2px 8px rgba(0,0,0,.06);")
@@ -2399,7 +2399,7 @@ def render_stages():
             for key, label, icon in [("ideas", "Ideas", "💜"), ("todo", "To-Do", "🟠"),
                                      ("findings", "Findings", "🟢"), ("exhibits", "Exhibits", "🟦")]:
                 f = room / f"{key}.md"
-                body = mini_md(f.read_text()) if f.exists() else '<p style="color:var(--muted);">empty</p>'
+                body = mini_md(f.read_text(encoding="utf-8")) if f.exists() else '<p style="color:var(--muted);">empty</p>'
                 panels += (
                     f'<div style="border-top:4px solid {C[key]};border-radius:8px;background:var(--surface);'
                     f'border:1px solid var(--border);border-top:4px solid {C[key]};padding:1rem 1.1rem;overflow:auto;">'
@@ -2435,7 +2435,7 @@ def render_todo():
     tf = ROOT / "TODO.md"
     if not tf.exists():
         return '<p class="empty">No TODO.md found. Create it at the project root.</p>'
-    text = tf.read_text()
+    text = tf.read_text(encoding="utf-8")
     open_n = text.count("- [ ]")
     prog_n = text.count("- [~]")
     done_n = text.count("- [x]")
@@ -3028,7 +3028,7 @@ function show(id) {
   if (id === 'diffs') loadDiffs();
 }
 
-// ---- Home "Today" to-do: click a box to cross the item off. State persists in localStorage
+// ---- Diffs "Today" to-do: click a box to cross the item off. State persists in localStorage
 // keyed by the TODAY.md date + item index, so reloads keep the checks — but when /sleep writes
 // a NEW TODAY.md (new date), the keys change and every item comes back fresh & uncrossed. ----
 function _applyTodo(li, done) {
@@ -3687,7 +3687,7 @@ def official_verdicts():
         if (ROOT / "audits/pipeline_runs").exists() else []
     if not runs:
         return {}, None
-    rep = _json.loads(runs[-1].read_text())
+    rep = _json.loads(runs[-1].read_text(encoding="utf-8"))
     return rep.get("verdicts", {}), rep.get("run")
 
 
@@ -3743,7 +3743,7 @@ def render_sample_flow():
     if d is None:
         f = ROOT / "output" / "sample_flow.json"
         if f.exists():
-            d, mode = _json.loads(f.read_text()), "json"
+            d, mode = _json.loads(f.read_text(encoding="utf-8")), "json"
         else:
             return ('<p class="empty">No sample flow yet. Write a generator exposing '
                     '<code>compute_flow(root)</code> (preferred: the dashboard then computes live on '
@@ -3756,7 +3756,7 @@ def render_sample_flow():
     runs = sorted((ROOT / "audits/pipeline_runs").glob("run_*.json")) \
         if (ROOT / "audits/pipeline_runs").exists() else []
     if runs:
-        rep = _json.loads(runs[-1].read_text())
+        rep = _json.loads(runs[-1].read_text(encoding="utf-8"))
         vc = {}
         for v in rep.get("verdicts", {}).values():
             vc[v["verdict"]] = vc.get(v["verdict"], 0) + 1
@@ -3779,7 +3779,7 @@ def render_sample_flow():
              f'color:var(--muted);margin-bottom:0.3rem;">The Official Pipeline</div>'
              f'<code style="display:block;background:var(--surface2);border:1px solid var(--border);'
              f'border-radius:4px;padding:0.45rem 0.7rem;font-size:0.78rem;margin-bottom:0.4rem;">'
-             f'python3 scripts/run_official_pipeline.py</code>'
+             f'bash code/run_pipeline.sh</code>'
              f'<div style="font-size:0.74rem;color:var(--muted);">Re-derives every exhibit from raw '
              f'data and verdicts each one. Or say <code>/pipeline</code> in a Claude Code session.</div>'
              f'<div style="font-size:0.74rem;margin-top:0.4rem;">{last_line}</div></div>')
@@ -3891,7 +3891,7 @@ def render_epigraph():
         f = ROOT / "quotes" / fname
         if not f.exists():
             return None
-        lines = [l.strip() for l in f.read_text().splitlines()
+        lines = [l.strip() for l in f.read_text(encoding="utf-8").splitlines()
                  if l.strip() and not l.strip().startswith("#")]
         return random.choice(lines) if lines else None
 
@@ -3950,7 +3950,7 @@ def scan_html_decks():
         # Pull <title> if present, else prettify the slug.
         title = slug.replace("_", " ").replace("-", " ").title()
         try:
-            head = f.read_text(errors="ignore")[:2000]
+            head = f.read_text(errors="ignore", encoding="utf-8")[:2000]
             m = re.search(r"<title>(.*?)</title>", head, re.I | re.S)
             if m and m.group(1).strip():
                 title = m.group(1).strip()
@@ -3965,7 +3965,7 @@ def scan_html_decks():
         if meta_path.exists():
             try:
                 import json as _json
-                meta = _json.loads(meta_path.read_text())
+                meta = _json.loads(meta_path.read_text(encoding="utf-8"))
                 title = meta.get("title", title)
                 purpose = meta.get("purpose", "")
                 date_str = meta.get("date")
@@ -4070,7 +4070,7 @@ def render_scale():
         led = ROOT / ".commit_reviews.json"
         rec = {}
         if led.exists():
-            try: rec = _json.loads(led.read_text())
+            try: rec = _json.loads(led.read_text(encoding="utf-8"))
             except Exception: rec = {}
         reviewed = sum(1 for h in hashes if h in rec)
     except Exception:
@@ -4122,20 +4122,22 @@ def render_scale():
 CASSETTE_ART = "╭──────────────────────────────────────────────────────╮\n│ ┌──────────────────────────────────────────────────┐ │\n│ │ M I X T A P E   H A R N E S S      [ 90 ]        │ │\n│ │ ················································ │ │\n│ │ a research operating system       SIDE A         │ │\n│ └──────────────────────────────────────────────────┘ │\n│                                                      │\n│      .-------.      ________      .-------.          │\n│     | / . . \\ |    /::::::::::\\    | / . . \\ |       │\n│     |  (( o ))  |  |::::::::::::|  |  (( o ))  |     │\n│     | \\ . . / |    \\::::::::::/    | \\ . . / |       │\n│      '-------'      '''''''''''      '-------'       │\n│ ==================================================== │\n│  (o)                                            (o)  │\n╰──────────────────────────────────────────────────────╯"
 
 
-def render_home():
-    """The Home landing (git projects only). Just the enlarged cassette (the harness's face),
-    with the "Today" to-do card beneath it (which stage + what's left today, from TODAY.md,
-    written by /amnesia). The verification-debt scale used to render here too but was moved
-    to the Diffs tab (Scott, 2026-09-20) — home is now just the mixtape image. The scale still
-    lives on the Diffs tab, where refreshScale() weighs it."""
-    # "Today" card — written by /amnesia each run (TODAY.md at the project root): which stage
-    # we're in + what's left to do today. Rendered just below the scale. Absent-safe: if there's
-    # no TODAY.md, the card is omitted.
+def render_today_card():
+    """The "Today" to-do card — written by /amnesia each run (TODAY.md at the project root):
+    which stage we're in + what's left to do today.
+
+    It renders at the top of the Diffs tab, above the verification-debt scale. Those two belong
+    together: /amnesia and /sleep both record unreviewed diffs as carried-forward verification
+    debt, so "what's left today" and "what still needs verifying" are the same page. Home is
+    deliberately just the cassette. Absent-safe: with no TODAY.md it returns ""."""
     today_html = ""
     tf = ROOT / "TODAY.md"
     if tf.exists():
         import datetime as _dt
-        raw = tf.read_text()
+        # Explicit UTF-8: the default codec is the platform's (GBK on a Chinese
+        # Windows), and /amnesia writes em dashes and curly quotes, so a bare
+        # read_text() raises UnicodeDecodeError and takes the whole page down.
+        raw = tf.read_text(encoding="utf-8", errors="replace")
         stage_line, left_items, hdr_date = "", [], ""
         in_left = False
         for ln in raw.splitlines():
@@ -4191,12 +4193,18 @@ def render_home():
             + f'<div style="font-size:0.82rem;color:var(--muted);margin-bottom:0.35rem;"><b>Left to do today:</b> '
             f'<span style="font-weight:400;">click a box to cross it off</span></div>'
             f'<ul style="margin:0;padding:0;font-size:0.9rem;line-height:1.45;">{left_html}</ul></div>')
+    return today_html
+
+
+def render_home():
+    """The Home landing. Just the enlarged cassette (the harness's face), standing alone.
+
+    The verification-debt scale used to render here and moved to the Diffs tab
+    (Scott, 2026-09-20); the "Today" to-do card followed it there (2026-10-08) so the two sit
+    together. refreshScale() weighs the scale on that tab."""
     return (
         f'<div style="max-width:1000px;margin:0 auto;min-height:78vh;display:flex;'
         f'align-items:center;justify-content:center;">'
-        # The cassette — the harness's face, standing completely alone. Both the Today
-        # card and the verification-debt scale were removed from home (Scott, 2026-09-20);
-        # the scale now lives (big, clickable) on the Diffs tab.
         f'<pre class="cassette">{CASSETTE_ART}</pre>'
         f'</div>')
 
@@ -4207,7 +4215,9 @@ def render_diffs():
     pushes). Empty-state if the project is not a git repo. The point (Paul GP essay 8): the
     bounded diff is the unit of verification — review one small change at a time, visually."""
     if not (ROOT / ".git").exists():
-        return ('<p class="empty">This project is not a local git repository yet, so there is no '
+        # The Today card is not git-dependent, so it survives the empty state.
+        return render_today_card() + (
+                '<p class="empty">This project is not a local git repository yet, so there is no '
                 'commit history to show. Diffs appear here once the project is under local git '
                 '(local-only — nothing is ever pushed anywhere).</p>')
     # A GRID of compact commit cards (mirrors the figure cards): click one and it "jumps and
@@ -4330,7 +4340,7 @@ def render_diffs():
         '    </div>'
         '  </div>'
         '</div>')
-    return grid + modal
+    return render_today_card() + grid + modal
 
 
 
@@ -4382,7 +4392,7 @@ def render_skills_hooks():
          "tag": "Deep-read a paper",
          "front": "Download, split, and deeply read an academic PDF. Splits it into 4-page chunks, reads them in small batches, and produces structured reading notes — avoiding the context-window crash <i>and</i> the shallow skim.",
          "back": "Every academic paper, every time (skip only under ~15 pages). Used on victor.pdf (Chernozhukov–Wüthrich–Zhu, conformal inference for synthetic control) → <code>readings/victor_notes/</code>. Say “read / review / summarize this paper.”"},
-        {"icon": "\U0001F3A8", "cmd": "/beautiful_deck", "name": "Beautiful Deck", "color": "#fb7185",
+        {"icon": "\U0001F3A8", "cmd": "/beautiful-deck", "name": "Beautiful Deck", "color": "#fb7185",
          "tag": "The Beamer machine",
          "front": "End-to-end beautiful Beamer deck: an original theme designed for the audience, an ethos / pathos / logos restructure, figures generated from code first, zero-warning compile, then a /tikz pass for visual-collision cleanup.",
          "back": "Fire it when a deck doesn't exist yet or needs a full rebuild. <i>Note: some projects' decks are HTML, so you may use this in sibling projects — it's in your toolkit, not this project's history.</i>"},
@@ -4579,7 +4589,7 @@ def build_page(hypotheses, insights, decisions, pipeline, figures, code_files, d
         ("data", "Data"),
         ("skills_hooks", "Skills & Hooks"),
     ]
-    # Git projects land on a HOME tab (verification-debt scale + today's to-do), gain an in-page
+    # Git projects land on a HOME tab (the cassette alone), gain an in-page
     # Chat tab, and gain a Diffs tab (the bounded diff as the unit of verification) — Diffs sits in
     # The Checklist group, right after Checklist. Gated on a local .git dir so a non-git clone stays lean.
     _home = (ROOT / ".git").exists()
@@ -4610,7 +4620,7 @@ def build_page(hypotheses, insights, decisions, pipeline, figures, code_files, d
         last_audit = audits_recent[0] if audits_recent else None
         na_lines = []
         if na_file.exists():
-            na_lines = [l.strip().lstrip("0123456789. ") for l in na_file.read_text().split("\n") if l.strip() and not l.startswith("#")][:3]
+            na_lines = [l.strip().lstrip("0123456789. ") for l in na_file.read_text(encoding="utf-8").split("\n") if l.strip() and not l.startswith("#")][:3]
         reorient_parts = []
         if last_audit:
             reorient_parts.append(f'<strong>Last session ({last_audit["date"]}):</strong> {html_mod.escape(last_audit["conclusion"])}')
@@ -4621,11 +4631,11 @@ def build_page(hypotheses, insights, decisions, pipeline, figures, code_files, d
 
     _ph = 'color:var(--muted);font-size:0.85rem;line-height:1.6;max-width:60ch;padding:1.5rem;border:1px dashed var(--border);border-radius:8px;background:var(--surface);'
     views = f"""
-    <div class="view{' active' if _home else ''}" id="v-home"><h2>Verification Debt</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Where you always land. The scale weighs work <em>produced</em> (commits) against work <em>verified</em> (diffs you reviewed) — accept a diff in the Diffs tab and it settles live. Below it, today's to-do (from <code>TODAY.md</code>).</p>{render_home() if _home else ''}</div>
+    <div class="view{' active' if _home else ''}" id="v-home"><h2>Verification Debt</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Where you always land. The scale weighs work <em>produced</em> (commits) against work <em>verified</em> (diffs you reviewed) — accept a diff in the Diffs tab and it settles live. Today's to-do (from <code>TODAY.md</code>) and the scale both live on the Diffs tab. All the way down to <code>&lt;pre class="cassette"&gt;</code>.</p>{render_home() if _home else ''}</div>
     <div class="view{'' if _home else ' active'}" id="v-decks"><h2>Decks</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Self-contained HTML decks under <code>decks/html/</code>, embedded live and newest-first. Pick one from the rail; it renders in place.</p>{render_decks()}</div>
     <div class="view" id="v-narrative"><h2>Template</h2>{reorient_html}<p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">The research-appendix genre — the standing pattern the write-up follows. The empty form; no project findings.</p>{render_narrative(hypotheses, insights)}</div>
     <div class="view" id="v-checklist_per_analysis"><h2>Checklist</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">The methodological gate upstream of everything. <strong>Click an analysis row</strong> to open its stages and their exhibits in place — each figure/table flips from the exhibit to its description to the scrollable source code that made it (Esc backs out). Per-analysis grid + Step 0 package cards below. Every DiD analysis instantiates <code>analyses/&lt;slug&gt;/checklist.md</code> from the template — the AI invokes <code>/checklist</code> to walk Steps 0–9.</p>{render_checklist_per_analysis()}</div>
-    <div class="view" id="v-diffs"><h2>Diffs</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Local git history for this project — the <strong>bounded diff as the unit of verification</strong>. Click a commit card and it floats open into a full-screen view — the front shows only what changed (green added / red removed); hit "Show full context" to expand, or flip the card for authored/committed dates and the review sign-off. Use ← → to walk commits. Mark a commit reviewed once you agree with it — that pays down verification debt and the scale settles live. Read-only on git: the dashboard runs <code>git log</code>/<code>git show</code> only, never commits or pushes.</p>{render_diffs()}</div>
+    <div class="view" id="v-diffs"><h2>Diffs</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Local git history for this project — the <strong>bounded diff as the unit of verification</strong>. Click a commit card and it floats open into a full-screen view — the front shows only what changed (green added / red removed); hit "Show full context" to expand, or flip the card for authored/committed dates and the review sign-off. Use ← → to walk commits. Mark a commit reviewed once you agree with it — that pays down verification debt and the scale settles live. Read-only on git: the dashboard runs <code>git log</code>/<code>git show</code> only, never commits or pushes. Today's to-do (from <code>TODAY.md</code>, written by <code>/amnesia</code>) sits at the top — cross an item off to strike it through.</p>{render_diffs()}</div>
     <div class="view" id="v-figures"><h2>Figures</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Flip-card gallery of figures in <code>output/figures/</code>. Click a figure to open it full-size — it spins in, <strong>F</strong> goes true fullscreen, <strong>&larr; &rarr;</strong> cycle between figures, <strong>Esc</strong> returns.</p>{render_figures(figures, insights) if figures else f'<div style="{_ph}">Empty until the pipeline emits figures to <code>output/figures/</code> — nothing appears here that a script did not produce.</div>'}</div>
     <div class="view" id="v-tables"><h2>Tables</h2><div style="{_ph}">Flip-card gallery of pipeline-produced tables. Each card shows a table with the source script that generated it and a status badge; click to flip for provenance and approval state. This tab is populated automatically once the analysis pipeline emits tables to <code>output/tables/</code>. It is empty until then — every table shown traces back to a wired script.</div></div>
     <div class="view" id="v-decisions"><h2>Decisions</h2><div style="{_ph}">Audit trail of binding design decisions. Each entry records the choice that was made, the alternatives that were considered, and the rationale for the pick — so every downstream number can be traced back to a logged decision. Once a decision is committed here, every script downstream must respect it. Empty until the first decision is logged.</div></div>
@@ -4655,7 +4665,7 @@ def read_manifest():
     """Read the pipeline manifest. Returns dict of script_path → status."""
     if MANIFEST_PATH.exists():
         import json as json_mod
-        return json_mod.loads(MANIFEST_PATH.read_text())
+        return json_mod.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     return {}
 
 
@@ -4718,7 +4728,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if (ROOT / ".git").exists():
                 led = ROOT / ".commit_reviews.json"
                 try:
-                    reviews = json_top.loads(led.read_text()) if led.exists() else {}
+                    reviews = json_top.loads(led.read_text(encoding="utf-8")) if led.exists() else {}
                 except Exception:
                     reviews = {}
                 try:
@@ -4868,7 +4878,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     or not fig_path or slug.startswith("_")):
                 self.send_error(400, "Bad request"); return
             ex = st_dir / "exhibits.md"
-            existing = ex.read_text() if ex.exists() else "# exhibits\n"
+            existing = ex.read_text(encoding="utf-8") if ex.exists() else "# exhibits\n"
             already = fig_path in existing
             wired = _script_is_wired(script)
             if not already:
@@ -4895,7 +4905,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if (ROOT / ".git").exists() and re.fullmatch(r"[0-9a-fA-F]{7,40}", h or ""):
                 led = ROOT / ".commit_reviews.json"
                 try:
-                    rec = json_mod.loads(led.read_text()) if led.exists() else {}
+                    rec = json_mod.loads(led.read_text(encoding="utf-8")) if led.exists() else {}
                 except Exception:
                     rec = {}
                 if reviewed:

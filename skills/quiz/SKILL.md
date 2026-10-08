@@ -1,6 +1,7 @@
 ---
 name: quiz
-description: Seven multiple-choice questions, asked ONE AT A TIME, to check that Scott actually understands something — a diff, an analysis, a decision, a data pull, a stage's evidence. Use when Scott says "quiz me", invokes /quiz, or asks for help understanding something specific ("/quiz about the evidence we've been working on for xyz", "quiz me on what you just did"). Grounded in Geoffrey Litt's "Understanding is the new bottleneck" (July 2026) and Silicon Central's third row: understanding is HUMAN and hooked via a SCORE. The score, not a click, is what pays down understanding debt.
+description: >-
+  Seven multiple-choice questions, asked ONE AT A TIME, to check that Scott actually understands something — a diff, an analysis, a decision, a data pull, a stage's evidence. Use when Scott says "quiz me", invokes /quiz, or asks for help understanding something specific ("/quiz about the evidence we've been working on for xyz", "quiz me on what you just did"). Grounded in Geoffrey Litt's "Understanding is the new bottleneck" (July 2026) and Silicon Central's third row: understanding is HUMAN and hooked via a SCORE. The score, not a click, is what pays down understanding debt.
 ---
 
 # /quiz — seven questions, one at a time

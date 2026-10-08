@@ -1,6 +1,7 @@
 ---
 name: covariates
-description: Interview-based covariate selection for DiD designs. Walks the user through 5 questions ONE AT A TIME, then synthesizes the "10-chapter book by the world's leading expert on Y(0) trends" — those 10 chapters are the covariates. Grounded in Heckman, Ichimura & Todd (1997, RESTUD) approach: find the X that drives E[Y(0)] trends. Then suggests data sources and fetches the data once confirmed.
+description: >-
+  Interview-based covariate selection for DiD designs. Walks the user through 5 questions ONE AT A TIME, then synthesizes the "10-chapter book by the world's leading expert on Y(0) trends" — those 10 chapters are the covariates. Grounded in Heckman, Ichimura & Todd (1997, RESTUD) approach: find the X that drives E[Y(0)] trends. Then suggests data sources and fetches the data once confirmed.
 ---
 
 # /covariates — covariate selection by interview

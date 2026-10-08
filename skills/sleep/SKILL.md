@@ -39,7 +39,7 @@ Bring the durable state file current per its required structure (last-updated ti
 
 ### Step 3 — write the next `TODAY.md` (the handoff to-do)
 
-Write/overwrite `TODAY.md` at the project root — the SAME two-line format `/amnesia` uses and the dashboard Home card parses, but pointed at the NEXT meeting:
+Write/overwrite `TODAY.md` at the project root — the SAME two-line format `/amnesia` uses and the dashboard Diffs card parses, but pointed at the NEXT meeting:
 
 ```markdown
 # Today · YYYY-MM-DD
@@ -52,9 +52,9 @@ Left:
 - <third>
 ```
 
-Date it TODAY (the dashboard flags it stale once the day turns, which is the correct signal — it's last session's handoff). This is the single most important write for continuity: it's the first thing the next session sees on the Home tab and the thing `/amnesia` reads back. Make the first bullet the genuine next action, concrete enough to start on cold.
+Date it TODAY (the dashboard flags it stale once the day turns, which is the correct signal — it's last session's handoff). This is the single most important write for continuity: it's the first thing the next session sees on the Diffs tab and the thing `/amnesia` reads back. Make the first bullet the genuine next action, concrete enough to start on cold.
 
-**PLAIN LANGUAGE FIRST (Scott needs a little more help than terse jargon gives him).** Each `Left:` bullet must OPEN with one plain-English sentence he'll understand cold — what we're doing and why, no jargon/filenames/acronyms — THEN the precise jargony detail in parentheses. Pattern: `- <plain sentence>. (<precise jargon>)`. A bare jargon item failed him once; lead human, follow precise. The Home card renders each bullet as a click-to-cross-off checkbox, so keep each item to ONE coherent bullet. (Same rule as `/amnesia` Step 0 — they write the same file.)
+**PLAIN LANGUAGE FIRST (Scott needs a little more help than terse jargon gives him).** Each `Left:` bullet must OPEN with one plain-English sentence he'll understand cold — what we're doing and why, no jargon/filenames/acronyms — THEN the precise jargony detail in parentheses. Pattern: `- <plain sentence>. (<precise jargon>)`. A bare jargon item failed him once; lead human, follow precise. The Diffs card renders each bullet as a click-to-cross-off checkbox, so keep each item to ONE coherent bullet. (Same rule as `/amnesia` Step 0 — they write the same file.)
 
 ## Style discipline
 

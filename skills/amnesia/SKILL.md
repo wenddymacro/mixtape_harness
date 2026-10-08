@@ -5,7 +5,7 @@ description: |
   disk + checklist boxes) first — auto-fixing any factual claim that drifted —
   then produces (1) a chat summary of where the project stands and (2) a
   two-line TODAY.md (which stage + what's left today) that the dashboard's
-  Home tab renders as a "Today" card. Use when the user says "amnesia", "get
+  Diffs tab renders as a "Today" card. Use when the user says "amnesia", "get
   me up to speed", "where were we", "reorient me", or invokes /amnesia.
   Disposable; regenerate every invocation. ALSO supports STAGE MODE: "amnesia
   stage 2", "amnesia bite", "amnesia target" reorient on ONE checklist-stage
@@ -19,13 +19,13 @@ Session amnesia is the recurring failure mode of the researcher's workflow. He w
 This skill is the orientation tool. It produces two things from current sources:
 
 1. **A chat summary** — a 4–8 sentence in-conversation reload of where things stand. Read first; it's the primary output.
-2. **A `TODAY.md` to-do** at the project root — a two-line "today" note (which stage we're in + what's left to do today). ALWAYS written on every invocation. The dashboard's Home tab renders it as a "Today" card, and the two lines also go into the chat summary. See "Step 0 — the TODAY.md to-do" below.
+2. **A `TODAY.md` to-do** at the project root — a two-line "today" note (which stage we're in + what's left to do today). ALWAYS written on every invocation. The dashboard's Diffs tab renders it as a "Today" card, and the two lines also go into the chat summary. See "Step 0 — the TODAY.md to-do" below.
 
 Always reads from current sources; never gets stale. Disposable; each invocation overwrites.
 
 > **STATE.md is the ONE thing that can lie.** Git, disk, and the checklist boxes cannot lie about what happened — a commit exists or it doesn't, a file is built or it isn't, a box is `[x]` or `[ ]`. STATE.md is the only orientation source written by a fallible hand, so it is the only one that drifts. It drifts most dangerously when a session keeps working *past* the last time STATE.md was touched (this bit us 2026-07-10: STATE.md's header still read "dose NOT built, blocked on a live fork" while four later commits that same day had resolved the fork, built the dose panel, and made a 14-slide deck — `/amnesia` then faithfully replayed a world that no longer existed). **The fix is Step -1 below: amnesia now RECONCILES STATE.md against ground truth and auto-fixes drifted facts BEFORE it trusts or reports anything.** Amnesia is no longer "trust the note"; it is "trust the note, verify it against git+disk, fix it, then report."
 
-> **Retired 2026-07-09:** the old HTML reorient deck (`reorient/index.html`, served at `/reorient`) was dropped. `/amnesia` no longer generates it, and the dashboard no longer serves it. The visual reload now lives on the dashboard's **Home** tab (the "Today" card from `TODAY.md` above the verification scale). Chat summary + `TODAY.md` are the whole output.
+> **Retired 2026-07-09:** the old HTML reorient deck (`reorient/index.html`, served at `/reorient`) was dropped. `/amnesia` no longer generates it, and the dashboard no longer serves it. The visual reload now lives on the dashboard's **Diffs** tab (the "Today" card from `TODAY.md` above the verification scale). Chat summary + `TODAY.md` are the whole output.
 
 ## When to invoke
 
@@ -133,7 +133,7 @@ Plus the stage's section in `analyses/<slug>/checklist.md` for the gate state, a
 
 ### Step 0 — write `TODAY.md` (always, before the chat summary)
 
-On EVERY invocation (full mode and stage mode), write/overwrite `TODAY.md` at the project root. It is deliberately tiny — two things only: **which stage we're in**, and **what's left to do today**. Derive both from STATE.md (§4 In progress → the stage; §5 Next → what's left) and, in stage mode, from the active stage's `todo.md`. Exact format the dashboard's Home card parses:
+On EVERY invocation (full mode and stage mode), write/overwrite `TODAY.md` at the project root. It is deliberately tiny — two things only: **which stage we're in**, and **what's left to do today**. Derive both from STATE.md (§4 In progress → the stage; §5 Next → what's left) and, in stage mode, from the active stage's `todo.md`. Exact format the dashboard's Diffs card parses:
 
 ```markdown
 # Today · YYYY-MM-DD
@@ -150,9 +150,9 @@ Rules:
 - The `# Today · <date>` line carries today's date (the dashboard uses it to flag a stale card).
 - `Stage:` is ONE line. `Left:` is a short bullet list — the day's real remaining work, not the whole backlog.
 - **PLAIN LANGUAGE FIRST (the researcher needs a little more help than the terse jargon gives him).** Each `Left:` item must OPEN with one plain-English sentence a tired the researcher re-reading cold will instantly understand — what we're actually doing and why, no jargon, no file names, no acronyms. THEN, in parentheses, the precise jargony version (file names, column names, method terms) is welcome and encouraged for when he's back in the work. Pattern: `- <plain sentence>. (<precise jargon detail>)`. A bare jargon item like "Verify the data WIRING (ring_classified.csv vs ring_articles_to_fips.csv), do they join?" FAILED him once — lead with "Look at the two raw files with our own eyes and see if they fit together" and put the file names in the parenthetical. This applies to the chat summary's "Left:" lines too.
-- The Home card renders each `Left:` bullet as a click-to-cross-off checkbox; keep each item to ONE bullet (the plain sentence + its parenthetical) so a check crosses off a whole coherent task.
+- The Diffs card renders each `Left:` bullet as a click-to-cross-off checkbox; keep each item to ONE bullet (the plain sentence + its parenthetical) so a check crosses off a whole coherent task.
 - If the project isn't a DiD/stage project (no stages), `Stage:` may name the current phase instead (e.g. "drafting §3").
-- `TODAY.md` is disposable, regenerated each run; projects should gitignore it (like the diff review ledger). It is NOT a substitute for STATE.md — STATE.md is the durable state; TODAY.md is just today's focus. The dashboard's Home "Today" card persists per-item checkmarks within the day (localStorage); a new date clears them — which is exactly why /sleep writes tomorrow's TODAY.md fresh.
+- `TODAY.md` is disposable, regenerated each run; projects should gitignore it (like the diff review ledger). It is NOT a substitute for STATE.md — STATE.md is the durable state; TODAY.md is just today's focus. The dashboard's Diffs "Today" card persists per-item checkmarks within the day (localStorage); a new date clears them — which is exactly why /sleep writes tomorrow's TODAY.md fresh.
 
 ### Step 1 — chat summary (right after TODAY.md)
 
@@ -232,6 +232,6 @@ things he produces while being coaxed are executed, not lost.
 
 ## Origin
 
-Created June 9, 2026, after the researcher articulated session amnesia as the recurring failure mode and proposed STATE.md as the fix. Originally paired with an HTML "reorient deck" for visual reload; that deck was retired 2026-07-09 once `/amnesia` began writing `TODAY.md` and the dashboard grew a Home tab — the Home "Today" card is now the visual reload, and STATE.md remains what the AI reads on entry. Same philosophy: orientation, not documentation; always reads from current sources.
+Created June 9, 2026, after the researcher articulated session amnesia as the recurring failure mode and proposed STATE.md as the fix. Originally paired with an HTML "reorient deck" for visual reload; that deck was retired 2026-07-09 once `/amnesia` began writing `TODAY.md` and the dashboard grew a "Today" card from it — that card (now on the Diffs tab, 2026-10-08) is the visual reload, and STATE.md remains what the AI reads on entry. Same philosophy: orientation, not documentation; always reads from current sources.
 
 **Step -1 (reconcile) added 2026-07-11**, after STATE.md's header drifted a full day behind git+disk (it read "dose NOT built, blocked on a live fork" while four later commits that same day had resolved the fork, built the dose panel, and shipped a 14-slide deck) — and `/amnesia` faithfully replayed the dead state. The lesson: STATE.md is hand-written and therefore the only orientation source that can lie, while git/disk/checklist boxes cannot. So amnesia now verifies STATE.md against ground truth and auto-fixes drifted facts (preserving human judgment) before trusting it. This is the harness's own "verification is continuous, the producer cannot grade its own exam" discipline applied to the orientation file itself.

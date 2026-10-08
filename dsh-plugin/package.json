@@ -1,0 +1,12 @@
+{
+  "name": "@local/mixtape-harness-dsh",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Exposes this harness's skills/ directory to every DSH session in the profile, as a deployment-level skill provider.",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

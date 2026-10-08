@@ -54,7 +54,7 @@ Create a new research project folder with Scott's standard structure. This skill
    cp $GTD/dashboard_server.py             [project-name]/
    cp $GTD/scripts/r/_ledger.R $GTD/scripts/r/_manifest.R       [project-name]/code/R/   2>/dev/null || true
    cp $GTD/scripts/python/{_manifest.py,make_sample_flow.py,pdf_deck_to_html.py} [project-name]/code/python/ 2>/dev/null || true
-   cp $GTD/scripts/run_official_pipeline.py [project-name]/scripts/ 2>/dev/null || true
+   cp $GTD/code/run_pipeline.sh            [project-name]/code/            2>/dev/null || true
    cp $GTD/decks/html/README.md            [project-name]/decks/html/
    cp -r $GTD/quotes $GTD/reorient         [project-name]/ 2>/dev/null || true
    ```

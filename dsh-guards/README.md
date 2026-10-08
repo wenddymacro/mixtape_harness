@@ -1,0 +1,295 @@
+# dsh-guards — the harness's pre-execution guardrails, native to DSH
+
+A DSH bundle that ports the three **pre-execution** guardrails from
+[`../hooks/`](../hooks) so they run as first-class guards instead of Claude Code
+command hooks. The Claude Code originals stay where they are; they are the
+specification this ports from.
+
+```
+dsh-guards/
+├── package.json        # bundle manifest
+├── cordis.patch.yml    # the one row that mounts the plugin
+├── index.js            # dsh wiring only: guards, listener, message factory
+├── checks.js           # all the logic; no dsh imports, so bare `node` runs it
+├── test.mjs            # the case matrix (node test.mjs)
+└── README.md
+```
+
+## Why `ctx.tools.guard()` and not `tools/pre-execute`
+
+The Python hooks signal by exit code: `exit 0` allows silently, `exit 2` blocks
+with the reason on stderr. DSH has no stdin/exit-code contract, so the choice is
+which extension point replaces it.
+
+`tools/pre-execute` is a reorderable waterfall — useful when several plugins
+should negotiate. A **guard** registers *after* that waterfall, is synchronous,
+and is monotonic: per the `dsh-tools` documentation, a returned reason denies the
+call and **"no later listener can turn that denial back into permission."**
+
+These three rules are meant to hold unconditionally, so a guard is the correct
+shape. For the same reason this bundle exposes no config that a higher patch
+layer could loosen: installing it is the consent.
+
+The deny path lands in the model as a tool error reading `Error: <reason>`, which
+is exactly what stderr plus `exit 2` produced before.
+
+## Why the advisories use `tools/post-execute`
+
+`deck-from-pipeline` and `no-stale-canon` are different in kind: the write has
+already happened and **must stand**. `exit 2` on a PostToolUse hook is a message
+to the model, not a veto, and the two hooks say so — `no-stale-canon`'s own
+message reads "(warn, not block)".
+
+So they are not guards. They are a `tools/post-execute` listener that returns the
+downstream decision with the warning **appended to the tool result content**.
+
+**Why content and not `additionalContexts`.** The first version attached an
+`additionalContexts` message, on the strength of the `dsh-tools` documentation
+("either decision may attach `additionalContexts`, which are ferried on the
+returned result"). It delivered nothing that reached anyone: the session log shows
+426 `tool/result` events, **none** carrying `additionalContexts`, and no
+plugin-tagged message was ever spliced into the agent inbox — while the trace
+proved the listener ran and returned a decision carrying them.
+
+Appending to the result content is also the more faithful port. The Python
+originals wrote to stderr and exited 2, and Claude Code surfaces that **as part of
+the tool result** — which is what this does.
+
+Such a listener does not own the decision, so it awaits `next()` and **spreads**
+whatever came back, adding only that content block. With nothing to say — or when
+the downstream decision replaced a structured `value`, since post-execute forbids
+sending both `value` and `content` — it returns the decision untouched and stays
+invisible to every other plugin in the chain.
+
+**It is registered twice, deliberately.** The waterfall is dispatched on a scope
+derived from the executing agent (`scopeTarget(this, exec.agent)`), while a bundle
+plugin's own context sits at the profile root. `dsh-scope` documents that event
+admission "extends UP" a scope chain, which would make the root an ancestor of
+every agent — but dsh's per-agent guidance is explicit that per-agent behavior
+belongs on `agent.ctx`, obtained in an `agent/created` listener. Which one
+dispatches could not be settled by reading the shipped code, and the trace settled
+it the other way: **both fire**. A shared `WeakSet` keeps delivery to **exactly
+one** advisory per execution.
+
+Registering per agent also closes a real gap rather than only hedging an unknown:
+an agent that already exists when the plugin loads never fires `agent/created`, and
+the plugin-context registration is what covers it.
+
+## The mistake that cost five restarts
+
+This module once contained `import { createUserMessage } from
+'@deepseek-ai/dsh-llm'`, on the theory that a bundle may rely on packages shipped
+with dsh. **It may not.** The plugin then failed to activate with its top-level
+code never having run — a **link-time** resolution failure, before a single
+statement — so no guards and no listener existed at all.
+
+What made it so slow to see is a testing error, not a dsh one: a module that fails
+to link registers no guards, and an **"expect allow"** guard test cannot tell "the
+guard permitted this" from "the guard does not exist". The `[G]` escape-hatch check
+is an expect-allow test, and it was read as proof that the new generation had
+loaded when it proved nothing of the kind. Only the block-expecting checks would
+have shown it.
+
+`index.js` now imports nothing outside `./` and `node:` builtins, and a test lists
+any bare specifier so it cannot creep back. The logic lives in `checks.js`, which
+also has no dsh imports, so `node dsh-guards/test.mjs` exercises everything without
+a harness installation — including calling `apply()` against a mock context.
+
+## What is ported
+
+| Original hook | Mechanism |
+|---|---|
+| `protect-raw-data` | `ctx.tools.guard()` |
+| `no-fabricated-exhibit` (both arms) | `ctx.tools.guard()` |
+| `no-offbook-exhibit` | `ctx.tools.guard()` |
+| `deck-from-pipeline` | `tools/post-execute` advisory |
+| `no-stale-canon` | `tools/post-execute` advisory |
+
+All five are ported. The two advisories only do anything in a project that has a
+`code/run_pipeline.sh`: `findRoot` walks up from the file being written and gives
+up silently when there is no runner, which is what the Python does too. In this
+harness repo there is no runner, so they are inert here and functional in an
+analysis project.
+
+## Seven deliberate deviations from the Python
+
+**[A] Tool names.** DSH's tools are `write`, `edit` and `pwsh`, with no
+`MultiEdit` and no `NotebookEdit`. Two original code paths therefore disappear
+rather than being ported: the `MultiEdit` branch that joined
+`edits[].new_string`, and the `NotebookEdit` path. The originals registered a
+`NotebookEdit` matcher but never handled it — a silent no-op — so nothing that
+worked stops working.
+
+**[B] `no-offbook-exhibit`'s `SCRATCH_RUN` escape hatch is repaired.** The Python
+read `os.environ.get("SCRATCH_RUN")`, but a PreToolUse hook runs *before* the
+tool's shell exists, so a `SCRATCH_RUN=1` prefix lives only in the command string
+and never reaches the hook process. The documented escape hatch could not fire,
+while the block message instructed the model to use it. Here a leading
+`SCRATCH_RUN=<value>` in the command itself is honoured, and the inherited
+environment variable still is too.
+
+**[C] Backslashes.** `EMITS_RE` and `PLOT_RE` matched only `output/figures` and
+`output/tables` with forward slashes, so a Windows-style reference was silently
+*unmatched* — the rule looked enforced and was not. Both now accept either
+separator.
+
+**[D] Messages.** Reworded for DSH: no claim about a macOS kernel seal
+(`root:wheel 555/444`), and no naming a person.
+
+**[E] The skip-list no longer needs a leading separator.** The original pattern
+`[/\\]hooks[/\\]` required a separator *before* `hooks`, so a relative
+`hooks/x.py` was never skipped. That is not cosmetic:
+`no-fabricated-exhibit.py`'s own source contains `fabricat` (in its docstring)
+and `faker` (in its regex), so editing it through a relative path would have made
+the guard block itself.
+
+**[F] `no-stale-canon`'s entry pattern no longer hides hyphenated producers.** It
+captured the script with `[^\s—-]+`, which excludes hyphens — so
+`` `fig.png` — src: code/03-my-figure.py `` did not match at all. The entry was
+not reported MISSING or UNWIRED; it was **invisible**, which is worse, because
+the check then silently under-enforces while appearing to pass. The capture now
+stops at whitespace.
+
+**[G] The `SCRATCH_RUN` escape hatch accepts the PowerShell spelling.** Repairing
+`[B]` exposed a second problem, found by trying it: dsh's shell on Windows is
+`pwsh`, where `SCRATCH_RUN=1 python ...` is not a command at all — PowerShell
+answers `The term 'SCRATCH_RUN=1' is not recognized`. The guard honoured an escape
+hatch the user could not actually type, and the block message taught the unusable
+form. `$env:SCRATCH_RUN=1; python ...` is now accepted too, and the message shows
+both spellings.
+
+Everything else is a faithful port, including the deliberate residuals: a
+tell-word with **no** RNG in sight is allowed, and a file whose *name* mentions
+`power`, `_sim`, `placebo`, `conformal`, `boot` and friends is exempt from the
+fabrication scan entirely.
+
+## Coverage, including the gaps inherited from the Python
+
+| tool | raw data immutable | no fabricated exhibit | no off-book exhibit |
+|---|---|---|---|
+| `write` / `edit` | yes | yes | n/a |
+| shell (`pwsh` / `bash`) | **no — inherited gap** | yes | yes |
+
+`protect-raw-data` deliberately does not watch the shell, so `mv`, `chmod`, a
+redirect, or a script that rewrites raw data are **not** covered — the Python
+docstring records that a Bash arm was built and then removed, and this port
+preserves that decision rather than quietly widening it.
+
+The two advisories fire on `write` / `edit` only, matching the originals'
+`Edit|Write|MultiEdit` registration (DSH has no `MultiEdit`).
+
+## Known leniency inherited from the Python
+
+Not changed here, because each would alter what the check *enforces* rather than
+how it runs. Both make a check weaker than it reads:
+
+* `wiredSourceBlob` appends the whole runner text **after** filtering comments,
+  so a figure name mentioned anywhere in `run_pipeline.sh` — including inside a
+  comment — counts as "wired".
+* Only whole-line comments are skipped when scanning the runner. A **trailing**
+  comment (`# python3 code/x.py` at the end of a code line) counts as wired.
+
+## Install
+
+Sidebar → **Plugins** → install a bundle, absolute path:
+
+```
+C:\Users\english\Documents\mixtape\mixtape_harness\dsh-guards
+```
+
+Read the returned `application` field: `applied` is what means the change is
+live. Do not hand-write the profile's `package.json` or `cordis.patch.yml`.
+
+## Verify
+
+The case matrix is self-contained — no fixtures are checked in:
+
+```bash
+node dsh-guards/test.mjs      # bundled node also works
+```
+
+It runs 81 checks and covers both the allow and deny path of every guard, both
+advisory checks against a miniature project (a runner, a deck, a stage canister
+with each of MISSING / UNWIRED / STALE), the `[B]`, `[E]`, `[F]` and `[G]`
+repairs, and the documented residuals.
+
+It also covers the listener's decision handling — that it returns the downstream
+decision **unchanged** when it has nothing to say and **spreads** it when it
+does, rather than replacing it — and the guard against a decision that replaced a
+structured `value`, since post-execute forbids sending both `value` and `content`.
+
+Because `index.js` imports nothing outside `./` and `node:` builtins, it is
+importable by bare `node` too, so the wiring is exercised for real rather than only
+asserted textually: the matrix calls `apply()` against a mock context and checks
+the three guards, the three event registrations, and the disposer.
+
+## Verified against a live install
+
+Every one of these was exercised against a running dsh with the bundle installed,
+not inferred:
+
+| # | check | expectancy | result |
+|---|---|---|---|
+| 1 | overwrite an existing `data/raw/` file | block | blocked, with the reason |
+| 2 | write a `.py` that `ggsave`s random numbers | block | blocked, naming the tell-word |
+| 3 | draw a plot inline in a shell command | block | blocked |
+| 4 | the same command with the escape hatch | allow | allowed, and the command ran |
+| 5 | write a deck referencing an unwired figure | warn | warning appeared in the tool result |
+| 6 | canonise an `exhibits.md` with a missing exhibit | warn | warning appeared in the tool result |
+
+Checks 1–3 matter most, because they are the ones that can fail the right way: an
+**expect-allow** check cannot tell "the guard permitted this" from "the guard does
+not exist", so only a block-expecting check proves a guard is installed at all.
+
+The two advisories append their warning to the **tool result content**, so it
+surfaces in the same place the Python originals' stderr did.
+
+Installed behaviour worth trying by hand: ask the agent to overwrite an existing
+file under `data/raw/` (it should be refused with a reason), and to write a `.py`
+that `ggsave`s random numbers (likewise).
+
+## Rollback
+
+Remove the bundle in the **Plugins** page. Nothing in the repo changes.
+
+## API facts this port relies on
+
+Verified against the shipped `@deepseek-ai/dsh-tools` module rather than assumed,
+because the reference documentation asks that every service method and event be
+confirmed before use:
+
+* `ctx.tools.guard(guard)` registers a synchronous guard after the
+  `tools/pre-execute` waterfall and returns its own disposer. A returned string
+  denies.
+* The execution object handed to a guard is
+  `{ token, callId, rootCallId, name, signal, agent?, parent?, schema?, arguments, deferContext(), concludeTurn() }`,
+  with `arguments` deep-frozen and JSON-serializable. `name` is the tool name;
+  `arguments` is the tool's own argument object.
+* The denial is materialized as `content: [{ type: 'text', text: 'Error: <reason>' }], isError: true`.
+* `tools/post-execute` is a waterfall over `(exec, result, next)`. Its decision is
+  `{ kind: 'accept', content?, value?, additionalContexts? }` or
+  `{ kind: 'block', feedback, additionalContexts? }`. `accept` keeps the call
+  successful and may replace `content`; a decision carrying both `value` and
+  `content` throws, which is why the advisory defers to a replaced value.
+* `additionalContexts` are documented as "ferried on the returned result", but in
+  practice nothing observed here carried them: 426 `tool/result` events, none with
+  the field, and no plugin-tagged message spliced into the agent inbox. The
+  warning is appended to the result **content** instead.
+* `acceptContext` in the loop is
+  `(context) => inbox.splice('next-step', inbox.nextStep.length, 0, [context])`,
+  so a delivered context would appear as an `agent/inbox/spliced` event with
+  `target: 'next-step'` — which is how its absence was established.
+* `apply(ctx)` returning a function is the dispose path, and `ctx.on(event, listener)`
+  returns its own disposer.
+* The plugin declares `export const inject = ['tools']`. Without it the loader
+  activates the plugin immediately, and touching `ctx.tools` before the registry
+  is mounted throws. Declaring the dependency makes activation wait for the
+  service. **This was the cause of the first install appearing to succeed while
+  doing nothing.**
+* **A bundle must not import a package that ships with dsh.** Doing so fails at
+  link time, before any top-level statement runs, so the plugin registers nothing
+  and the failure is invisible from outside. `index.js` therefore imports only
+  `node:` builtins and `./checks.js`.
+
+`node:fs` is imported directly and deliberately: a guard must be synchronous,
+while the `ctx.fs` service is asynchronous.
