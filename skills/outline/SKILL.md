@@ -59,7 +59,7 @@ Adapt to the actual project. Every force/exhibit the user named in Q1–Q5 MUST 
 
 ```
 A. Data & provenance         — sources, VENDORED_FROM, raw→derived chain
-B. The reproducible pipeline — run_pipeline.sh; script→exhibit map
+B. The reproducible pipeline — code/run_pipeline.sh; script→exhibit map
 C. Covariate construction    — F_S method (STL, Hyndman), the script
 D. Design & power            — size/power sim, MDE, the verdict
 E. Estimator details         — spec, inference (permutation/RI), SEs

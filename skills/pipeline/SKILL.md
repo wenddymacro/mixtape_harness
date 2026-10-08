@@ -1,7 +1,7 @@
 ---
 name: pipeline
 description: Run the project's official pipeline end to end and report which exhibits are confirmed accurate, which changed (were inaccurate), and which are untouched (not produced by the pipeline). Use when the user says /pipeline, "run the pipeline", "run the official pipeline", or wants to verify the dashboard's exhibits before a talk or submission.
-allowed-tools: Bash(python3 scripts/run_official_pipeline.py*), Read, Grep, Glob
+allowed-tools: Bash(bash code/run_pipeline.sh*), Read, Grep, Glob
 ---
 
 # /pipeline — Run the official pipeline and verdict every exhibit
@@ -12,7 +12,7 @@ what is confirmed, what was inaccurate, and what is not covered.
 
 ## Convention (what makes this skill portable across projects)
 
-The master pipeline file is ALWAYS `scripts/run_official_pipeline.py` at
+The master pipeline file is ALWAYS `code/run_pipeline.sh` at
 the project root. That naming convention is the skill's only project
 knowledge — same name in every GTD project, so this skill works anywhere
 without configuration.
@@ -31,7 +31,7 @@ verdict:
 - **new / regenerated / regenerated-identical** — bookkeeping for new
   artifacts and figures
 
-If `scripts/run_official_pipeline.py` does not exist in this project,
+If `code/run_pipeline.sh` does not exist in this project,
 STOP and say so. Offer to create one following the reference
 implementation in one of your existing projects, but do not
 improvise: the researcher decides what counts as official.
@@ -47,7 +47,7 @@ improvise: the researcher decides what counts as official.
 1. **Run it** (from the project root):
 
    ```
-   python3 scripts/run_official_pipeline.py
+   bash code/run_pipeline.sh
    ```
 
 2. **Read the report** it just wrote — the newest file in

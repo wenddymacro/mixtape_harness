@@ -3779,7 +3779,7 @@ def render_sample_flow():
              f'color:var(--muted);margin-bottom:0.3rem;">The Official Pipeline</div>'
              f'<code style="display:block;background:var(--surface2);border:1px solid var(--border);'
              f'border-radius:4px;padding:0.45rem 0.7rem;font-size:0.78rem;margin-bottom:0.4rem;">'
-             f'python3 scripts/run_official_pipeline.py</code>'
+             f'bash code/run_pipeline.sh</code>'
              f'<div style="font-size:0.74rem;color:var(--muted);">Re-derives every exhibit from raw '
              f'data and verdicts each one. Or say <code>/pipeline</code> in a Claude Code session.</div>'
              f'<div style="font-size:0.74rem;margin-top:0.4rem;">{last_line}</div></div>')
