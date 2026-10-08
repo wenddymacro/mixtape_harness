@@ -261,7 +261,7 @@ def scan_decisions():
     if not idx.exists():
         return []
     results = []
-    for line in idx.read_text().split("\n"):
+    for line in idx.read_text(encoding="utf-8").split("\n"):
         if line.startswith("|") and "---" not in line and "ID" not in line:
             cols = [c.strip() for c in line.split("|")[1:-1]]
             if len(cols) >= 4:
@@ -521,7 +521,7 @@ def render_status(hypotheses, insights, pipeline):
     next_actions_html = ""
     na_file = ROOT / "NEXT_ACTIONS.md"
     if na_file.exists():
-        na_content = na_file.read_text().strip()
+        na_content = na_file.read_text(encoding="utf-8").strip()
         lines = [l.strip() for l in na_content.split("\n") if l.strip() and not l.startswith("#")]
         if lines:
             items = "".join(f'<li>{html_mod.escape(l.lstrip("0123456789. "))}</li>' for l in lines)
@@ -796,7 +796,7 @@ def _stage_folder(slug_dir, step_num):
 def _active_stage_folder(slug_dir):
     """The one folder name ACTIVE_STAGE points at (the 'You Are Here' room), or '' if none."""
     f = slug_dir / "ACTIVE_STAGE"
-    return f.read_text().strip() if f.exists() else ""
+    return f.read_text(encoding="utf-8").strip() if f.exists() else ""
 
 
 def scan_analyses():
@@ -1589,7 +1589,7 @@ def figure_pinned_stages():
             if not (st.is_dir() and ex.exists()):
                 continue
             try:
-                txt = ex.read_text()
+                txt = ex.read_text(encoding="utf-8")
             except Exception:
                 continue
             label = f"{slug_dir.name} · {st.name}"
@@ -1611,7 +1611,7 @@ def _script_is_wired(script_path):
     if not runner.exists():
         return False
     try:
-        txt = runner.read_text()
+        txt = runner.read_text(encoding="utf-8")
     except Exception:
         return False
     base = os.path.basename(script_path)
@@ -1633,7 +1633,7 @@ def scan_decisions_deck():
             title = ""
             try:
                 m = re.search(r"<title>(.*?)</title>",
-                              cand.read_text(errors="ignore")[:2000], re.I | re.S)
+                              cand.read_text(errors="ignore", encoding="utf-8")[:2000], re.I | re.S)
                 if m:
                     title = m.group(1).strip()
             except OSError:
@@ -1767,7 +1767,7 @@ def render_figures(figures, insights=None):
         manual_captions = {}
         if captions_file.exists():
             import json as json_mod
-            manual_captions = json_mod.loads(captions_file.read_text())
+            manual_captions = json_mod.loads(captions_file.read_text(encoding="utf-8"))
         caption = manual_captions.get(f['name']) or (extract_figure_caption(f['script'], f['name']) if f['script'] and f['script'] != 'ad-hoc' else None)
         caption_html = f'<div class="fig-caption">{html_mod.escape(caption)}</div>' if caption else ''
         # Pin-to-stage control (append the figure's path to a checklist stage's exhibits.md via /api/pin-figure).
@@ -2144,7 +2144,7 @@ def render_narrative(hypotheses, insights):
     nf = ROOT / "narrative.md"
     # If narrative.md has real content (more than the placeholder), use it
     if nf.exists():
-        content = nf.read_text().strip()
+        content = nf.read_text(encoding="utf-8").strip()
         if len(content) > 100 and not content.startswith("# Narrative\n\nThe narrative will be assembled"):
             # Check for drift
             drift_warnings = check_narrative_drift(content, hypotheses)
@@ -2302,7 +2302,7 @@ def render_skills():
 def render_manuscript():
     mf = ROOT / "manuscript_outline.md"
     if mf.exists():
-        return mini_md(mf.read_text())
+        return mini_md(mf.read_text(encoding="utf-8"))
     return '<p class="empty">No manuscript_outline.md found.</p>'
 
 
@@ -2327,26 +2327,26 @@ def render_stages():
         active = ""
         amf = stages_dir.parent / "ACTIVE_STAGE"
         if amf.exists():
-            active = amf.read_text().strip()
+            active = amf.read_text(encoding="utf-8").strip()
         rooms = sorted([d for d in stages_dir.iterdir() if d.is_dir()])
 
         def _count_boxes(p):
             if not p.exists():
                 return 0, False
-            t = p.read_text()
+            t = p.read_text(encoding="utf-8")
             return t.count("- [ ]"), ("- [x]" in t or "- [X]" in t)
 
         def _count_bullets(p):
             if not p.exists():
                 return 0
-            return sum(1 for l in p.read_text().splitlines()
+            return sum(1 for l in p.read_text(encoding="utf-8").splitlines()
                        if l.strip().startswith(("- ", "* ")) and "[ ]" not in l and "[x]" not in l)
 
         def _has_content(p):
             # findings/exhibits "done" = file exists with real prose beyond the header
             if not p.exists():
                 return False
-            body = _re.sub(r"^---.*?---", "", p.read_text(), flags=_re.S)
+            body = _re.sub(r"^---.*?---", "", p.read_text(encoding="utf-8"), flags=_re.S)
             body = _re.sub(r"^#.*$", "", body, flags=_re.M)
             return len(body.strip()) > 120
 
@@ -2367,7 +2367,7 @@ def render_stages():
             n_todo, _ = _count_boxes(room / "todo.md")
             has_find = _has_content(room / "findings.md")
             ex = room / "exhibits.md"
-            n_exhib = sum(1 for l in (ex.read_text().splitlines() if ex.exists() else [])
+            n_exhib = sum(1 for l in (ex.read_text(encoding="utf-8").splitlines() if ex.exists() else [])
                           if l.strip().startswith("- ")) if ex.exists() else 0
             glow = (f"box-shadow:0 0 0 2px {C['todo']},0 6px 22px rgba(217,118,6,.25);"
                     if is_active else "box-shadow:0 2px 8px rgba(0,0,0,.06);")
@@ -2399,7 +2399,7 @@ def render_stages():
             for key, label, icon in [("ideas", "Ideas", "💜"), ("todo", "To-Do", "🟠"),
                                      ("findings", "Findings", "🟢"), ("exhibits", "Exhibits", "🟦")]:
                 f = room / f"{key}.md"
-                body = mini_md(f.read_text()) if f.exists() else '<p style="color:var(--muted);">empty</p>'
+                body = mini_md(f.read_text(encoding="utf-8")) if f.exists() else '<p style="color:var(--muted);">empty</p>'
                 panels += (
                     f'<div style="border-top:4px solid {C[key]};border-radius:8px;background:var(--surface);'
                     f'border:1px solid var(--border);border-top:4px solid {C[key]};padding:1rem 1.1rem;overflow:auto;">'
@@ -2435,7 +2435,7 @@ def render_todo():
     tf = ROOT / "TODO.md"
     if not tf.exists():
         return '<p class="empty">No TODO.md found. Create it at the project root.</p>'
-    text = tf.read_text()
+    text = tf.read_text(encoding="utf-8")
     open_n = text.count("- [ ]")
     prog_n = text.count("- [~]")
     done_n = text.count("- [x]")
@@ -3687,7 +3687,7 @@ def official_verdicts():
         if (ROOT / "audits/pipeline_runs").exists() else []
     if not runs:
         return {}, None
-    rep = _json.loads(runs[-1].read_text())
+    rep = _json.loads(runs[-1].read_text(encoding="utf-8"))
     return rep.get("verdicts", {}), rep.get("run")
 
 
@@ -3743,7 +3743,7 @@ def render_sample_flow():
     if d is None:
         f = ROOT / "output" / "sample_flow.json"
         if f.exists():
-            d, mode = _json.loads(f.read_text()), "json"
+            d, mode = _json.loads(f.read_text(encoding="utf-8")), "json"
         else:
             return ('<p class="empty">No sample flow yet. Write a generator exposing '
                     '<code>compute_flow(root)</code> (preferred: the dashboard then computes live on '
@@ -3756,7 +3756,7 @@ def render_sample_flow():
     runs = sorted((ROOT / "audits/pipeline_runs").glob("run_*.json")) \
         if (ROOT / "audits/pipeline_runs").exists() else []
     if runs:
-        rep = _json.loads(runs[-1].read_text())
+        rep = _json.loads(runs[-1].read_text(encoding="utf-8"))
         vc = {}
         for v in rep.get("verdicts", {}).values():
             vc[v["verdict"]] = vc.get(v["verdict"], 0) + 1
@@ -3891,7 +3891,7 @@ def render_epigraph():
         f = ROOT / "quotes" / fname
         if not f.exists():
             return None
-        lines = [l.strip() for l in f.read_text().splitlines()
+        lines = [l.strip() for l in f.read_text(encoding="utf-8").splitlines()
                  if l.strip() and not l.strip().startswith("#")]
         return random.choice(lines) if lines else None
 
@@ -3950,7 +3950,7 @@ def scan_html_decks():
         # Pull <title> if present, else prettify the slug.
         title = slug.replace("_", " ").replace("-", " ").title()
         try:
-            head = f.read_text(errors="ignore")[:2000]
+            head = f.read_text(errors="ignore", encoding="utf-8")[:2000]
             m = re.search(r"<title>(.*?)</title>", head, re.I | re.S)
             if m and m.group(1).strip():
                 title = m.group(1).strip()
@@ -3965,7 +3965,7 @@ def scan_html_decks():
         if meta_path.exists():
             try:
                 import json as _json
-                meta = _json.loads(meta_path.read_text())
+                meta = _json.loads(meta_path.read_text(encoding="utf-8"))
                 title = meta.get("title", title)
                 purpose = meta.get("purpose", "")
                 date_str = meta.get("date")
@@ -4070,7 +4070,7 @@ def render_scale():
         led = ROOT / ".commit_reviews.json"
         rec = {}
         if led.exists():
-            try: rec = _json.loads(led.read_text())
+            try: rec = _json.loads(led.read_text(encoding="utf-8"))
             except Exception: rec = {}
         reviewed = sum(1 for h in hashes if h in rec)
     except Exception:
@@ -4620,7 +4620,7 @@ def build_page(hypotheses, insights, decisions, pipeline, figures, code_files, d
         last_audit = audits_recent[0] if audits_recent else None
         na_lines = []
         if na_file.exists():
-            na_lines = [l.strip().lstrip("0123456789. ") for l in na_file.read_text().split("\n") if l.strip() and not l.startswith("#")][:3]
+            na_lines = [l.strip().lstrip("0123456789. ") for l in na_file.read_text(encoding="utf-8").split("\n") if l.strip() and not l.startswith("#")][:3]
         reorient_parts = []
         if last_audit:
             reorient_parts.append(f'<strong>Last session ({last_audit["date"]}):</strong> {html_mod.escape(last_audit["conclusion"])}')
@@ -4665,7 +4665,7 @@ def read_manifest():
     """Read the pipeline manifest. Returns dict of script_path → status."""
     if MANIFEST_PATH.exists():
         import json as json_mod
-        return json_mod.loads(MANIFEST_PATH.read_text())
+        return json_mod.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     return {}
 
 
@@ -4728,7 +4728,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if (ROOT / ".git").exists():
                 led = ROOT / ".commit_reviews.json"
                 try:
-                    reviews = json_top.loads(led.read_text()) if led.exists() else {}
+                    reviews = json_top.loads(led.read_text(encoding="utf-8")) if led.exists() else {}
                 except Exception:
                     reviews = {}
                 try:
@@ -4878,7 +4878,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                     or not fig_path or slug.startswith("_")):
                 self.send_error(400, "Bad request"); return
             ex = st_dir / "exhibits.md"
-            existing = ex.read_text() if ex.exists() else "# exhibits\n"
+            existing = ex.read_text(encoding="utf-8") if ex.exists() else "# exhibits\n"
             already = fig_path in existing
             wired = _script_is_wired(script)
             if not already:
@@ -4905,7 +4905,7 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             if (ROOT / ".git").exists() and re.fullmatch(r"[0-9a-fA-F]{7,40}", h or ""):
                 led = ROOT / ".commit_reviews.json"
                 try:
-                    rec = json_mod.loads(led.read_text()) if led.exists() else {}
+                    rec = json_mod.loads(led.read_text(encoding="utf-8")) if led.exists() else {}
                 except Exception:
                     rec = {}
                 if reviewed:
