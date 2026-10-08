@@ -215,9 +215,13 @@ const checksSrc = fs.readFileSync(new URL('./checks.js', import.meta.url), 'utf8
 
 expect("index.js declares inject = ['tools']", /export const inject = \['tools'\]/.test(indexSrc), true);
 expect('index.js exports apply()', /export function apply\(ctx\)/.test(indexSrc), true);
-expect('index.js imports createUserMessage statically',
-  /^import \{ createUserMessage \} from '@deepseek-ai\/dsh-llm';$/m.test(indexSrc), true);
 expect('index.js has NO lazy dynamic import', /await import\(/.test(indexSrc), false);
+// The invariant that actually broke: a bare specifier fails to LINK at activation,
+// so the module never executes and every guard and listener silently disappears.
+const bareImports = [...indexSrc.matchAll(/^import\s[^;]*?from\s+'([^']+)'/gms)]
+  .map((m) => m[1])
+  .filter((spec) => !spec.startsWith('./') && !spec.startsWith('node:'));
+expect('index.js imports nothing outside ./ and node: builtins', bareImports.join(', '), '');
 expect("index.js registers the post-execute listener on its own context",
   /ctx\.on\('tools\/post-execute'/.test(indexSrc), true);
 expect("index.js also registers it on each agent's context",
@@ -227,6 +231,24 @@ expect('index.js listens for agent/disposed', /ctx\.on\('agent\/disposed'/.test(
 expect('index.js registers all three guards',
   /GUARDS = \[guardRawData, guardFabricated, guardOffbook\]/.test(indexSrc), true);
 expect('checks.js carries no dsh import', /@deepseek-ai/.test(checksSrc), false);
+
+// Because index.js imports nothing bare, it is now importable by bare node -- so
+// the wiring can be exercised for real instead of only asserted textually.
+const plugin = await import('./index.js');
+expect('the plugin module loads at all', typeof plugin.apply, 'function');
+expect("the plugin declares inject = ['tools']", JSON.stringify(plugin.inject), '["tools"]');
+
+const wiredGuards = [];
+const wiredEvents = [];
+const disposePlugin = plugin.apply({
+  tools: { guard: (g) => (wiredGuards.push(g), () => {}) },
+  on: (event) => (wiredEvents.push(event), () => {}),
+});
+expect('apply() registers the three guards', wiredGuards.length, 3);
+expect('apply() wires the listener and the agent lifecycle', wiredEvents.join(','),
+  'tools/post-execute,agent/created,agent/disposed');
+expect('apply() returns a disposer', typeof disposePlugin, 'function');
+disposePlugin();
 
 const stub = (text) => ({ role: 'user', content: [{ type: 'text', text }] });
 const downstream = { kind: 'accept', content: [{ type: 'text', text: 'tool output' }] };
