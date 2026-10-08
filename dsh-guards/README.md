@@ -215,18 +215,38 @@ repairs, and the documented residuals.
 
 It also covers the listener's decision handling — that it returns the downstream
 decision **unchanged** when it has nothing to say and **spreads** it when it
-does, rather than replacing it — by passing a stub message factory into
-`postExecuteAdvisory`.
+does, rather than replacing it — and the guard against a decision that replaced a
+structured `value`, since post-execute forbids sending both `value` and `content`.
 
-One thing it cannot cover: `index.js` is not importable by bare `node`, because it
-statically imports a package that only resolves inside dsh. Its load-bearing lines
-are asserted textually instead (that it declares `inject`, exports `apply`,
-imports statically, and contains no dynamic import), and the wiring is verified
-live against an installed bundle.
+Because `index.js` imports nothing outside `./` and `node:` builtins, it is
+importable by bare `node` too, so the wiring is exercised for real rather than only
+asserted textually: the matrix calls `apply()` against a mock context and checks
+the three guards, the three event registrations, and the disposer.
+
+## Verified against a live install
+
+Every one of these was exercised against a running dsh with the bundle installed,
+not inferred:
+
+| # | check | expectancy | result |
+|---|---|---|---|
+| 1 | overwrite an existing `data/raw/` file | block | blocked, with the reason |
+| 2 | write a `.py` that `ggsave`s random numbers | block | blocked, naming the tell-word |
+| 3 | draw a plot inline in a shell command | block | blocked |
+| 4 | the same command with the escape hatch | allow | allowed, and the command ran |
+| 5 | write a deck referencing an unwired figure | warn | warning appeared in the tool result |
+| 6 | canonise an `exhibits.md` with a missing exhibit | warn | warning appeared in the tool result |
+
+Checks 1–3 matter most, because they are the ones that can fail the right way: an
+**expect-allow** check cannot tell "the guard permitted this" from "the guard does
+not exist", so only a block-expecting check proves a guard is installed at all.
+
+The two advisories append their warning to the **tool result content**, so it
+surfaces in the same place the Python originals' stderr did.
 
 Installed behaviour worth trying by hand: ask the agent to overwrite an existing
-file under `data/raw/` (should be refused with a reason), and to write a `.py`
-that `ggsave`s random numbers (should be refused).
+file under `data/raw/` (it should be refused with a reason), and to write a `.py`
+that `ggsave`s random numbers (likewise).
 
 ## Rollback
 

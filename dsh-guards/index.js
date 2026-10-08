@@ -3,7 +3,8 @@
  *
  * All of the logic lives in `checks.js`, which carries no dsh imports and is
  * therefore exercisable by a bare `node dsh-guards/test.mjs`. This module is the
- * thin part that needs a harness.
+ * thin part that needs a harness: it registers the three guards and the
+ * post-execute advisory listener.
  *
  * ---------------------------------------------------------------------------
  * WHY THERE IS NO BARE IMPORT HERE
@@ -14,141 +15,88 @@
  * LINK-time resolution failure, before a single statement -- and because the
  * failure is silent from the outside it cost five restarts to see.
  *
- * The message factory turned out to be unnecessary as well: see the delivery note
- * in checks.js. This module imports nothing outside `./` and `node:` builtins, so
- * it cannot fail to link.
+ * The message factory turned out to be unnecessary as well: the advisory is
+ * delivered in the tool result, which is what the Python originals' stderr+exit 2
+ * actually did. See the delivery note in checks.js.
+ *
+ * This module therefore imports nothing outside `./` and `node:` builtins, and a
+ * test lists any bare specifier so one cannot creep back.
  * ---------------------------------------------------------------------------
  *
- * TEMPORARY INSTRUMENTATION (remove once delivery is confirmed end to end).
- *
- * It records the module loading, the registrations, and one line per post-execute
- * decision. The switch sits next to this file rather than in the OS temp
- * directory, because the host process's `os.tmpdir()` is not necessarily the one a
- * shell sees -- and a trace that silently fails to arm would cost another restart.
- *
- *   switch: <this dir>/.trace        (create the file to arm, delete to disarm)
- *   log:    <this dir>/.trace.log
- *
- * Both are gitignored, and tracing can never break a guard.
- *
- * ONE RULE FOR THE INSTRUMENTATION: the waterfall's `next` continuation is called
- * exactly once per listener. An earlier traced version awaited `next()` for its own
- * record and then let the check await it again; the second call re-entered the
- * chain, and because the OUTERMOST listener's return value is the one the framework
- * keeps, the decision that came back had lost the advisory. The trace observes
- * `next()` by wrapping it, never by calling it twice.
+ * ONE RULE FOR THE LISTENER: the waterfall's `next` continuation is single-shot and
+ * must be called exactly once per listener. An instrumented version once awaited it
+ * for its own record and then let the check await it again; the second call
+ * re-entered the chain and, because the OUTERMOST listener's return value is the
+ * one the framework keeps, the decision that came back had lost the advisory. If
+ * this file is ever instrumented again, wrap `next` -- never call it twice.
  */
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   guardRawData,
   guardFabricated,
   guardOffbook,
-  postExecuteWarnings,
   postExecuteAdvisory,
 } from './checks.js';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const TRACE_SWITCH = path.join(HERE, '.trace');
-const TRACE_LOG = path.join(HERE, '.trace.log');
-
-function trace(entry) {
-  try {
-    if (!fs.existsSync(TRACE_SWITCH)) return;
-    fs.appendFileSync(TRACE_LOG, `${JSON.stringify({ t: Date.now(), ...entry })}\n`);
-  } catch {
-    /* tracing must never interfere with a guard */
-  }
-}
-
-// The module itself loaded -- the one fact an earlier round could only infer.
-trace({ where: 'module:loaded' });
-
+/**
+ * Wait for the tool registry before activating.
+ *
+ * Without this, `apply` runs immediately and touches `ctx.tools.guard(...)`; if the
+ * registry service is not mounted yet, `ctx.tools` is undefined and the whole plugin
+ * throws instead of registering anything. Declaring the dependency makes the loader
+ * activate us only once `tools` is available.
+ */
 export const inject = ['tools'];
 
 const GUARDS = [guardRawData, guardFabricated, guardOffbook];
 
+/**
+ * Register the three monotonic guards and the advisory listener.
+ *
+ * A guard registers after the `tools/pre-execute` waterfall, is synchronous, and is
+ * monotonic -- a returned reason denies the call and no later listener can turn
+ * that denial back into permission. Guards live in the registry's global layer, so
+ * they apply to every agent without further work.
+ *
+ * The ADVISORY listener is a different matter, and is registered TWICE:
+ *
+ *   - on this plugin's own context, and
+ *   - on each agent's context, from an `agent/created` listener.
+ *
+ * The waterfall is dispatched on a scope derived from the executing agent
+ * (`scopeTarget(this, exec.agent)`), while a bundle plugin's context sits at the
+ * profile root. `dsh-scope` documents that event admission "extends UP" a scope
+ * chain, which would make the root an ancestor of every agent; dsh's per-agent
+ * guidance says per-agent behavior belongs on `agent.ctx`, obtained in an
+ * `agent/created` listener. Reading the shipped code could not settle which one
+ * dispatches -- and the trace settled it the other way: **both do**. A shared
+ * WeakSet keeps delivery to exactly one advisory per execution.
+ *
+ * Registering per agent also closes a real gap rather than only hedging an unknown:
+ * an agent that already exists when the plugin loads never fires `agent/created`,
+ * and the plugin-context registration is what covers it.
+ */
 export function apply(ctx) {
-  trace({ where: 'apply:enter', hasTools: Boolean(ctx?.tools), hasOn: typeof ctx?.on });
-
-  const disposers = [];
-  try {
-    for (const guard of GUARDS) disposers.push(ctx.tools.guard(guard));
-    trace({ where: 'apply:guards', ok: true, count: GUARDS.length });
-  } catch (error) {
-    trace({ where: 'apply:guards', ok: false, error: String(error) });
-  }
-
+  const disposers = GUARDS.map((guard) => ctx.tools.guard(guard));
   const advised = new WeakSet();
   const perAgent = new Map();
 
-  const makeListener = (tag) => async (exec, result, next) => {
-    // Wrap `next` so the trace can see the downstream decision without calling the
-    // continuation a second time.
-    const tracedNext = async () => {
-      const decision = await next();
-      trace({
-        where: 'listener:checked',
-        tag,
-        name: exec?.name,
-        warnings: postExecuteWarnings(exec).length,
-        alreadyAdvised: advised.has(exec),
-        decisionKind: decision?.kind,
-        decisionHasValue: Boolean(decision && Object.hasOwn(decision, 'value')),
-        decisionBlocks: Array.isArray(decision?.content) ? decision.content.length : 0,
-        filePath: exec?.arguments?.file_path,
-      });
-      return decision;
-    };
+  const listener = (exec, result, next) => postExecuteAdvisory(exec, result, next, advised);
 
-    try {
-      const out = await postExecuteAdvisory(exec, result, tracedNext, advised);
-      trace({
-        where: 'listener:returned',
-        tag,
-        blocks: Array.isArray(out?.content) ? out.content.length : 0,
-      });
-      return out;
-    } catch (error) {
-      trace({ where: 'listener:threw', tag, error: String(error) });
-      throw error;
-    }
-  };
+  const offOwnContext = ctx.on('tools/post-execute', listener);
+  if (typeof offOwnContext === 'function') disposers.push(offOwnContext);
 
-  try {
-    const off = ctx.on('tools/post-execute', makeListener('own-ctx'));
-    if (typeof off === 'function') disposers.push(off);
-    trace({ where: 'apply:own-ctx', ok: true, disposer: typeof off });
-  } catch (error) {
-    trace({ where: 'apply:own-ctx', ok: false, error: String(error) });
-  }
-
-  try {
-    const offCreated = ctx.on('agent/created', ({ agent }) => {
-      trace({ where: 'agent:created', hasCtx: Boolean(agent?.ctx) });
-      if (!agent?.ctx || perAgent.has(agent)) return;
-      try {
-        const dispose = agent.ctx.on('tools/post-execute', makeListener('agent-ctx'));
-        if (typeof dispose === 'function') perAgent.set(agent, dispose);
-        trace({ where: 'apply:agent-ctx', ok: true });
-      } catch (error) {
-        trace({ where: 'apply:agent-ctx', ok: false, error: String(error) });
-      }
-    });
-    const offDisposed = ctx.on('agent/disposed', ({ agent }) => {
-      const dispose = perAgent.get(agent);
-      if (typeof dispose === 'function') dispose();
-      perAgent.delete(agent);
-    });
-    if (typeof offCreated === 'function') disposers.push(offCreated);
-    if (typeof offDisposed === 'function') disposers.push(offDisposed);
-    trace({ where: 'apply:agent-events', ok: true });
-  } catch (error) {
-    trace({ where: 'apply:agent-events', ok: false, error: String(error) });
-  }
-
-  trace({ where: 'apply:done', disposers: disposers.length });
+  const offCreated = ctx.on('agent/created', ({ agent }) => {
+    if (!agent?.ctx || perAgent.has(agent)) return;
+    const dispose = agent.ctx.on('tools/post-execute', listener);
+    if (typeof dispose === 'function') perAgent.set(agent, dispose);
+  });
+  const offDisposed = ctx.on('agent/disposed', ({ agent }) => {
+    const dispose = perAgent.get(agent);
+    if (typeof dispose === 'function') dispose();
+    perAgent.delete(agent);
+  });
+  if (typeof offCreated === 'function') disposers.push(offCreated);
+  if (typeof offDisposed === 'function') disposers.push(offDisposed);
 
   return () => {
     for (const dispose of disposers) if (typeof dispose === 'function') dispose();
