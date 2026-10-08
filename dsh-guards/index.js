@@ -15,22 +15,28 @@
  * failure is silent from the outside it cost five restarts to see.
  *
  * The message factory turned out to be unnecessary as well: see the delivery note
- * in checks.js. This module now imports nothing outside `./` and `node:` builtins,
- * so it cannot fail to link.
+ * in checks.js. This module imports nothing outside `./` and `node:` builtins, so
+ * it cannot fail to link.
  * ---------------------------------------------------------------------------
  *
  * TEMPORARY INSTRUMENTATION (remove once delivery is confirmed end to end).
  *
- * Every step is traced, including module load, so "did this file even execute?"
- * is answerable directly instead of inferred. The switch sits next to this file
- * rather than in the OS temp directory, because the host process's `os.tmpdir()`
- * is not necessarily the one a shell sees -- and a trace that silently fails to
- * arm would cost another restart.
+ * It records the module loading, the registrations, and one line per post-execute
+ * decision. The switch sits next to this file rather than in the OS temp
+ * directory, because the host process's `os.tmpdir()` is not necessarily the one a
+ * shell sees -- and a trace that silently fails to arm would cost another restart.
  *
  *   switch: <this dir>/.trace        (create the file to arm, delete to disarm)
  *   log:    <this dir>/.trace.log
  *
  * Both are gitignored, and tracing can never break a guard.
+ *
+ * ONE RULE FOR THE INSTRUMENTATION: the waterfall's `next` continuation is called
+ * exactly once per listener. An earlier traced version awaited `next()` for its own
+ * record and then let the check await it again; the second call re-entered the
+ * chain, and because the OUTERMOST listener's return value is the one the framework
+ * keeps, the decision that came back had lost the advisory. The trace observes
+ * `next()` by wrapping it, never by calling it twice.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -78,23 +84,31 @@ export function apply(ctx) {
   const perAgent = new Map();
 
   const makeListener = (tag) => async (exec, result, next) => {
-    try {
+    // Wrap `next` so the trace can see the downstream decision without calling the
+    // continuation a second time.
+    const tracedNext = async () => {
       const decision = await next();
-      const warnings = postExecuteWarnings(exec);
       trace({
         where: 'listener:checked',
         tag,
         name: exec?.name,
+        warnings: postExecuteWarnings(exec).length,
         alreadyAdvised: advised.has(exec),
-        warnings: warnings.length,
         decisionKind: decision?.kind,
         decisionHasValue: Boolean(decision && Object.hasOwn(decision, 'value')),
+        decisionBlocks: Array.isArray(decision?.content) ? decision.content.length : 0,
         filePath: exec?.arguments?.file_path,
       });
-      const out = await postExecuteAdvisory(exec, result, next, advised);
-      if (out !== decision) {
-        trace({ where: 'listener:delivered', tag, contentBlocks: out?.content?.length ?? 0 });
-      }
+      return decision;
+    };
+
+    try {
+      const out = await postExecuteAdvisory(exec, result, tracedNext, advised);
+      trace({
+        where: 'listener:returned',
+        tag,
+        blocks: Array.isArray(out?.content) ? out.content.length : 0,
+      });
       return out;
     } catch (error) {
       trace({ where: 'listener:threw', tag, error: String(error) });
