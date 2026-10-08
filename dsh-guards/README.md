@@ -9,7 +9,8 @@ specification this ports from.
 dsh-guards/
 ├── package.json        # bundle manifest
 ├── cordis.patch.yml    # the one row that mounts the plugin
-├── index.js            # the three guards
+├── index.js            # dsh wiring only: guards, listener, message factory
+├── checks.js           # all the logic; no dsh imports, so bare `node` runs it
 ├── test.mjs            # the case matrix (node test.mjs)
 └── README.md
 ```
@@ -51,13 +52,23 @@ returns the downstream decision untouched, so it stays invisible to every other
 plugin in the chain.
 
 The context itself is built with `createUserMessage` from `@deepseek-ai/dsh-llm`,
-tagged `source: { kind: 'plugin' }` — a kind dsh itself uses for
-plugin-injected context. That import is **lazy**, for two reasons: dsh resolves
-its own packages at runtime but a bare `node` run from this checkout cannot, so a
-static import would make the test matrix unrunnable; and a load-time failure
-would take the three working guards down with it. If the import ever fails, the
-advisories are skipped and the guards keep working — the failure mode is a
-missing warning, never a broken write.
+tagged `source: { kind: 'plugin' }` — a kind dsh itself uses for plugin-injected
+context.
+
+**That import is static, and the module is split because of it.** An earlier
+version imported it lazily so that `index.js` could also be imported by a bare
+`node` run. That was wrong, and it failed in the worst way available: Node
+resolves a dynamic import from the importing file's own location, where dsh's
+packages are not on the module path. The import threw, the message factory
+returned nothing, and **every advisory was dropped silently** — precisely the
+failure mode these guardrails exist to catch, reintroduced by the port.
+
+So the logic lives in `checks.js` with no dsh imports at all, and
+`node dsh-guards/test.mjs` exercises it directly. `index.js` is the thin part that
+needs a harness: it statically imports `createUserMessage`, registers the guards
+and the listener, and passes the message factory into `postExecuteAdvisory` as a
+**required argument**. If that import ever fails, the plugin fails loudly at
+activation instead of quietly at runtime.
 
 ## What is ported
 
@@ -164,13 +175,21 @@ The case matrix is self-contained — no fixtures are checked in:
 node dsh-guards/test.mjs      # bundled node also works
 ```
 
-It runs 61 checks and covers both the allow and deny path of every guard, both
+It runs 65 checks and covers both the allow and deny path of every guard, both
 advisory checks against a miniature project (a runner, a deck, a stage canister
-with each of MISSING / UNWIRED / STALE), the `[B]`, `[E]` and `[F]` repairs, the
-documented residuals, and the wiring: that `apply()` registers exactly three
-guards plus one `tools/post-execute` listener, and that the listener returns the
-downstream decision **unchanged** when it has nothing to say and **spreads** it
-when it does, rather than replacing it.
+with each of MISSING / UNWIRED / STALE), the `[B]`, `[E]` and `[F]` repairs, and
+the documented residuals.
+
+It also covers the listener's decision handling — that it returns the downstream
+decision **unchanged** when it has nothing to say and **spreads** it when it
+does, rather than replacing it — by passing a stub message factory into
+`postExecuteAdvisory`.
+
+One thing it cannot cover: `index.js` is not importable by bare `node`, because it
+statically imports a package that only resolves inside dsh. Its load-bearing lines
+are asserted textually instead (that it declares `inject`, exports `apply`,
+imports statically, and contains no dynamic import), and the wiring is verified
+live against an installed bundle.
 
 Installed behaviour worth trying by hand: ask the agent to overwrite an existing
 file under `data/raw/` (should be refused with a reason), and to write a `.py`

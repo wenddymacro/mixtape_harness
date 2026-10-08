@@ -7,9 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import * as guardsModule from './index.js';
 import {
-  apply,
   guardRawData,
   guardFabricated,
   guardOffbook,
@@ -22,7 +20,7 @@ import {
   stems,
   isExhibitRef,
   expandPaths,
-} from './index.js';
+} from './checks.js';
 
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'mixtape-guards-'));
 const RAW = path.join(ROOT, 'data', 'raw', 'brazil.csv');
@@ -195,22 +193,24 @@ expect('expandPaths splits the /. shorthand', expandPaths('a/b/n.png/.pdf').join
 expect('findRoot finds the runner', findRoot(DECK), PROJ);
 expect('findRoot returns null with no runner', findRoot(ORPHAN_DECK), null);
 
-// ------------------------------------------------------- plugin shape
-const registered = [];
-let postListener = null;
-const dispose = apply({
-  tools: { guard: (g) => (registered.push(g), () => {}) },
-  on: (event, listener) => {
-    if (event === 'tools/post-execute') postListener = listener;
-    return () => {};
-  },
-});
-expect('apply() registers three guards', registered.length, 3);
-expect("module declares inject = ['tools'] so activation waits for the registry",
-  JSON.stringify(guardsModule.inject), '["tools"]');
-expect('apply() registers a post-execute listener', typeof postListener, 'function');
-expect('apply() returns a disposer', typeof dispose, 'function');
-expect('every registered guard is a function', registered.every((g) => typeof g === 'function'), true);
+// ------------------------------------------------------- wiring smoke test
+// index.js cannot be imported here: it statically imports @deepseek-ai/dsh-llm,
+// which only resolves inside a dsh installation. So its load-bearing lines are
+// asserted textually, and checks.js is asserted to stay free of dsh imports --
+// which is exactly what keeps this whole matrix runnable by a bare `node`.
+const indexSrc = fs.readFileSync(new URL('./index.js', import.meta.url), 'utf8');
+const checksSrc = fs.readFileSync(new URL('./checks.js', import.meta.url), 'utf8');
+
+expect("index.js declares inject = ['tools']", /export const inject = \['tools'\]/.test(indexSrc), true);
+expect('index.js exports apply()', /export function apply\(ctx\)/.test(indexSrc), true);
+expect('index.js imports createUserMessage statically',
+  /^import \{ createUserMessage \} from '@deepseek-ai\/dsh-llm';$/m.test(indexSrc), true);
+expect('index.js has NO lazy dynamic import', /await import\(/.test(indexSrc), false);
+expect("index.js registers the post-execute listener",
+  /ctx\.on\('tools\/post-execute'/.test(indexSrc), true);
+expect('index.js registers all three guards',
+  /GUARDS = \[guardRawData, guardFabricated, guardOffbook\]/.test(indexSrc), true);
+expect('checks.js carries no dsh import', /@deepseek-ai/.test(checksSrc), false);
 
 const stub = (text) => ({ role: 'user', content: [{ type: 'text', text }] });
 const downstream = { kind: 'accept', content: [{ type: 'text', text: 'tool output' }] };
@@ -231,7 +231,6 @@ expect('postExecuteWarnings exposes the message', postExecuteWarnings(write(DECK
 const blocked = { kind: 'block', feedback: [{ type: 'text', text: 'refused elsewhere' }] };
 const stillBlocked = await postExecuteAdvisory(write(DECK, { content: 'x' }), {}, async () => blocked, stub);
 expect('advisory: a blocked call is left untouched', stillBlocked, blocked);
-dispose();
 
 fs.rmSync(ROOT, { recursive: true, force: true });
 
