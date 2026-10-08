@@ -1,0 +1,19 @@
+# mixtape_harness -> DSH: the pre-execution guardrails.
+#
+# The Claude Code originals live in ../hooks/*.py and are registered by
+# ../hooks/settings.snippet.json. This bundle is the native port: instead of
+# reading a JSON event on stdin and signalling with an exit code, each guardrail
+# becomes a `ctx.tools.guard()`.
+#
+# Why `guard()` and not the `tools/pre-execute` waterfall: a guard is monotonic
+# and registers AFTER that waterfall, so "no later listener can turn that denial
+# back into permission". These three rules are meant to hold unconditionally,
+# which is exactly that shape. For the same reason the plugin exposes no config
+# that a later layer could loosen -- installing it is the consent.
+#
+# Read ../dsh-guards/README.md for the four deliberate deviations from the
+# Python, and for how to verify and roll back.
+
+- insert:
+    - id: mixtape-harness-guards
+      name: '@local/mixtape-harness-guards'

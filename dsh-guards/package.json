@@ -1,0 +1,15 @@
+{
+  "name": "@local/mixtape-harness-guards",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Native DSH ports of the harness's pre-execution guardrails: raw data is immutable, no fabricated exhibits, no off-book exhibits.",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
