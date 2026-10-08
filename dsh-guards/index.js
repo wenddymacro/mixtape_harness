@@ -35,13 +35,55 @@
  *       relative `hooks/x.py` is skipped like an absolute one. As written, the
  *       guard's own source (which contains "fabricat" and "faker") could be
  *       blocked by itself when edited through a relative path.
+ *   [F] `no-stale-canon`'s entry pattern captured the producer script with
+ *       `[^\s—-]+`, which excludes hyphens -- so `src: code/03-my-figure.py` did
+ *       not match at all and the whole entry was invisible, not even reported
+ *       MISSING. The capture now stops at whitespace only.
  *
  * `node:fs` is imported directly, deliberately. A guard must be synchronous, and
  * the `ctx.fs` service is asynchronous, so the synchronous fs calls existSync /
  * realpathSync / readFileSync are the only ones usable here.
+ *
+ * ---------------------------------------------------------------------------
+ * The two POST-execution guardrails (`deck-from-pipeline`, `no-stale-canon`) are
+ * advisories, not blocks: the write has already happened and must stand, and the
+ * original signalled exactly the same way (`exit 2` on a PostToolUse hook is a
+ * message to the model, not a veto).
+ *
+ * The DSH equivalent is a `tools/post-execute` listener that attaches an
+ * `additionalContexts` message. Per the dsh-tools documentation, an `accept`
+ * decision "keeps the call successful" while "either decision may attach
+ * additionalContexts, which are ferried on the returned result". So the result
+ * stands and the warning rides along to the model -- the same outcome.
+ *
+ * Such a listener does not own the decision, so it awaits `next()` and spreads
+ * the downstream decision rather than replacing it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+
+/**
+ * `@deepseek-ai/dsh-llm` ships with dsh, so the bundle declares no dependency on
+ * it. It is imported LAZILY rather than at load time for two reasons: dsh resolves
+ * its own packages at runtime but a bare `node` run from this checkout cannot, so
+ * a static import would make the test matrix unrunnable; and a load-time failure
+ * would take the three working guards down with it.
+ */
+let llmModule;
+async function defaultMessageContext(text) {
+  if (llmModule === undefined) {
+    try {
+      llmModule = await import('@deepseek-ai/dsh-llm');
+    } catch {
+      llmModule = null;
+    }
+  }
+  if (llmModule === null || typeof llmModule.createUserMessage !== 'function') return null;
+  return llmModule.createUserMessage({
+    content: [{ type: 'text', text }],
+    source: { kind: 'plugin' }, // a kind dsh itself uses for plugin-injected context
+  });
+}
 
 /** The shell tool is `pwsh` on Windows and `bash` elsewhere; both are covered. */
 const SHELL_TOOLS = new Set(['pwsh', 'bash']);
@@ -248,6 +290,249 @@ function guardOffbook(exec) {
 }
 
 // ---------------------------------------------------------------------------
+// Post-execution advisories: deck-from-pipeline, no-stale-canon
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk up from the target file's own directory looking for `code/run_pipeline.sh`.
+ * Deliberately NOT a project root: the originals anchor on the file being
+ * written, which is what makes a deck or canister outside the project tree a
+ * silent no-op instead of an error. The filesystem root itself is never tested,
+ * matching the Python.
+ */
+function findRoot(startPath) {
+  const resolved = path.resolve(startPath);
+  const stop = path.parse(resolved).root;
+  let dir = path.dirname(resolved);
+  while (dir !== stop) {
+    try {
+      if (fs.statSync(path.join(dir, 'code', 'run_pipeline.sh')).isFile()) return dir;
+    } catch {
+      /* not here; keep walking up */
+    }
+    dir = path.dirname(dir);
+  }
+  return null;
+}
+
+/** How the originals recognise a wired script: case-sensitive, and launcher-limited. */
+const INVOKE_RE = /(?:python3?|Rscript|bash|sh)\s+(?:-\S+\s+)*([^\s;|&]+\.(?:py|R|r|sh))/g;
+
+/** The runner's lines, or null when this project has no runner. */
+function runnerLines(root) {
+  try {
+    return fs.readFileSync(path.join(root, 'code', 'run_pipeline.sh'), 'utf8').split(/\r?\n/);
+  } catch {
+    return null;
+  }
+}
+
+/** Basenames of the scripts the runner invokes on a non-comment line. */
+function wiredBasenames(root) {
+  const out = new Set();
+  for (const line of runnerLines(root) ?? []) {
+    if (line.trimStart().startsWith('#')) continue;
+    for (const match of line.matchAll(INVOKE_RE)) out.add(path.basename(match[1]));
+  }
+  return out;
+}
+
+/** Concatenated source of every script the runner invokes, plus the runner itself. */
+function wiredSourceBlob(root) {
+  const lines = runnerLines(root);
+  if (lines === null) return null;
+  const parts = [];
+  for (const line of lines) {
+    if (line.trimStart().startsWith('#')) continue;
+    for (const match of line.matchAll(INVOKE_RE)) {
+      const token = match[1];
+      const target = path.isAbsolute(token) ? token : path.join(root, token);
+      try {
+        if (fs.statSync(target).isFile()) parts.push(fs.readFileSync(target, 'utf8'));
+      } catch {
+        /* unreadable script: skip it, as the Python does */
+      }
+    }
+  }
+  parts.push(lines.join('\n'));
+  return parts.join('\n');
+}
+
+/**
+ * Every prefix of three or more underscore-separated tokens, longest first, then
+ * the whole stem. A two-token name yields only itself. This is what lets a
+ * dynamically-built name such as `proj_outcome_permonth_fullpool_53053.png` match
+ * its producer's literal prefix `proj_outcome_permonth_`.
+ */
+function stems(name) {
+  const stem = name.replace(/\.(png|pdf)$/i, '');
+  const parts = stem.split('_');
+  const out = [];
+  for (let k = parts.length; k > 2; k -= 1) out.push(parts.slice(0, k).join('_'));
+  out.push(stem);
+  return out;
+}
+
+const DECK_RE = /(decks[/\\].*\.html$)|(\.tex$)/i;
+/** [C] backslashes are allowed so a Windows-style reference is found, not missed. */
+const FIG_RE = /[A-Za-z0-9_./\\-]+\.(?:png|pdf)/g;
+const EXHIBIT_DIR_HINTS = ['img/', 'tbl/', 'output/figures', 'output/tables', '/figures/', '/tables/'];
+const SKIP_HINTS = ['assets/', 'logo', 'icon', '_template', 'screenshot', 'dash_'];
+
+/** [C] Normalise separators before hint matching; the Python assumed `/`. */
+function isExhibitRef(ref) {
+  const low = ref.replace(/\\/g, '/').toLowerCase();
+  if (SKIP_HINTS.some((hint) => low.includes(hint))) return false;
+  return EXHIBIT_DIR_HINTS.some((hint) => low.includes(hint));
+}
+
+function checkDeckFromPipeline(exec) {
+  if (exec.name !== 'write' && exec.name !== 'edit') return;
+  const filePath = exec.arguments?.file_path;
+  if (typeof filePath !== 'string' || !filePath) return;
+  if (!DECK_RE.test(filePath)) return;
+  const root = findRoot(filePath);
+  if (root === null) return;
+  const blob = wiredSourceBlob(root);
+  if (blob === null) return;
+
+  let deck;
+  try {
+    deck = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return;
+  }
+
+  const refs = [...new Set(deck.match(FIG_RE) ?? [])].filter(isExhibitRef);
+  const violations = refs
+    .filter((ref) => !stems(path.basename(ref)).some((stem) => blob.includes(stem)))
+    .sort();
+  if (violations.length === 0) return;
+
+  return [
+    'WARNING from deck-from-pipeline: this deck or manuscript references exhibit(s) that NO script',
+    'wired into code/run_pipeline.sh produces, so the pipeline cannot rebuild them:',
+    ...violations.map((ref) => `    - ${path.basename(ref)}`),
+    "This is the 'vibed exhibit' failure mode. Either wire the producing script into",
+    "code/run_pipeline.sh and re-run it clean, or remove the reference -- 'exists on disk' and",
+    "'ran once in chat' are not enough.",
+    'If this is a false positive (a dynamically-named figure the producer does not match), say so',
+    'and widen this check rather than deleting the reference.',
+  ].join('\n');
+}
+
+/**
+ * [F] The script capture stops at whitespace only. The Python's `[^\s—-]+` also
+ * excluded hyphens, so `src: code/03-my-figure.py` never matched and the entry
+ * was invisible rather than reported.
+ */
+const ENTRY_RE =
+  /`([^`]+\.(?:png|pdf|tex)(?:\/\.(?:png|pdf|tex))*)`\s*[—-]+\s*src:\s*([^\s]+\.(?:py|R|r))/gi;
+
+/** Expand the `name.png/.pdf` shorthand into both files. */
+function expandPaths(raw) {
+  const parts = raw.split('/.');
+  if (parts.length === 1) return [raw];
+  const base = parts[0];
+  const stem = base.replace(/\.[^.]+$/, '');
+  return [base, ...parts.slice(1).map((ext) => `${stem}.${ext}`)];
+}
+
+function checkStaleCanon(exec) {
+  if (exec.name !== 'write' && exec.name !== 'edit') return;
+  const filePath = exec.arguments?.file_path;
+  if (typeof filePath !== 'string' || !filePath) return;
+  if (path.basename(filePath) !== 'exhibits.md') return;
+
+  let text;
+  try {
+    text = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return;
+  }
+  if (!text.includes('CANON (')) return;
+  const root = findRoot(filePath);
+  if (root === null) return;
+  const wired = wiredBasenames(root);
+
+  const missing = [];
+  const unwired = [];
+  const stale = [];
+  for (const match of text.matchAll(ENTRY_RE)) {
+    const scriptRel = match[2];
+    const scriptBase = path.basename(scriptRel);
+    const scriptAbs = path.isAbsolute(scriptRel) ? scriptRel : path.join(root, scriptRel);
+    for (const figRel of expandPaths(match[1])) {
+      const figAbs = path.isAbsolute(figRel) ? figRel : path.join(root, figRel);
+      let figStat;
+      try {
+        figStat = fs.statSync(figAbs);
+      } catch {
+        missing.push(figRel); // missing short-circuits the other two, as in the Python
+        continue;
+      }
+      if (!wired.has(scriptBase)) {
+        unwired.push(`${figRel}  (src ${scriptBase} not in code/run_pipeline.sh)`);
+      }
+      try {
+        if (figStat.mtimeMs < fs.statSync(scriptAbs).mtimeMs) {
+          stale.push(`${figRel}  (older than ${scriptBase})`);
+        }
+      } catch {
+        /* producing script absent: the stale test is skipped, as in the Python */
+      }
+    }
+  }
+  if (missing.length === 0 && unwired.length === 0 && stale.length === 0) return;
+
+  const out = [
+    'WARNING from no-stale-canon: this stage is being CANONIZED, but some exhibits are not',
+    "'right and live'. The exhibits.md was saved (warn, not block) -- fix these so the wall can be trusted:",
+  ];
+  const group = (title, items) => {
+    if (items.length > 0) out.push('', title, ...items.map((item) => `    - ${item}`));
+  };
+  group('MISSING (marked canon but the file is not on disk):', missing);
+  group('UNWIRED (no pipeline script rebuilds it -- it cannot be regenerated):', unwired);
+  group('STALE (the figure is OLDER than its script -- code changed, figure did not; re-run it):', stale);
+  return out.join('\n');
+}
+
+const POST_CHECKS = [checkDeckFromPipeline, checkStaleCanon];
+
+/** Every advisory message this tool call should carry, in registration order. */
+function postExecuteWarnings(exec) {
+  return POST_CHECKS.map((check) => check(exec)).filter(
+    (message) => typeof message === 'string' && message.length > 0,
+  );
+}
+
+/**
+ * The `tools/post-execute` listener body.
+ *
+ * It does NOT own the decision: it awaits `next()` and spreads whatever came back,
+ * adding only `additionalContexts`. With nothing to say it returns the downstream
+ * decision untouched, so it stays invisible to every other plugin in the chain.
+ *
+ * `makeContext` is injectable so the test matrix can exercise this without a dsh
+ * installation; the default resolves `createUserMessage` lazily.
+ */
+async function postExecuteAdvisory(exec, result, next, makeContext = defaultMessageContext) {
+  const decision = await next();
+  // A blocked or cancelled call needs no advisory about content that was never
+  // written. dsh's own post-execute listeners gate on `kind` the same way.
+  if (decision?.kind && decision.kind !== 'accept') return decision;
+  const warnings = postExecuteWarnings(exec);
+  if (warnings.length === 0) return decision;
+  const contexts = (await Promise.all(warnings.map((text) => makeContext(text)))).filter(Boolean);
+  if (contexts.length === 0) return decision;
+  return {
+    ...decision,
+    additionalContexts: [...(decision?.additionalContexts ?? []), ...contexts],
+  };
+}
+
+// ---------------------------------------------------------------------------
 
 const GUARDS = [guardRawData, guardFabricated, guardOffbook];
 
@@ -258,12 +543,35 @@ const GUARDS = [guardRawData, guardFabricated, guardOffbook];
  */
 export function apply(ctx) {
   const disposers = GUARDS.map((guard) => ctx.tools.guard(guard));
+
+  // The advisories never own the decision: await the downstream one and spread it,
+  // adding context only. Returning `next()`'s value unchanged when there is nothing
+  // to say keeps this listener invisible to every other plugin in the chain.
+  const offPostExecute = ctx.on('tools/post-execute', postExecuteAdvisory);
+  if (typeof offPostExecute === 'function') disposers.push(offPostExecute);
+
   return () => {
     for (const dispose of disposers) if (typeof dispose === 'function') dispose();
   };
 }
 
-// Exported for the port's own test matrix. The loader looks for `apply`, so
-// these extra names are inert; they exist so the guard logic can be exercised
-// directly instead of only through an installed bundle.
-export { guardRawData, guardFabricated, guardOffbook, fabricatedTell, scratchRunRequested };
+// Exported for the port's own test matrix. The loader looks for `apply`, so these
+// extra names are inert; they exist so the guard logic can be exercised directly
+// instead of only through an installed bundle.
+export {
+  guardRawData,
+  guardFabricated,
+  guardOffbook,
+  fabricatedTell,
+  scratchRunRequested,
+  checkDeckFromPipeline,
+  checkStaleCanon,
+  postExecuteWarnings,
+  postExecuteAdvisory,
+  findRoot,
+  wiredBasenames,
+  wiredSourceBlob,
+  stems,
+  isExhibitRef,
+  expandPaths,
+};
