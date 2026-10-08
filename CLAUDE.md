@@ -126,7 +126,7 @@ Three instruments, three timings. They are complements, not substitutes.
 
 ### Decks
 
-- **`/beautiful_deck`** — when the deck doesn't exist yet, or needs full restructuring. The end-to-end machine.
+- **`/beautiful-deck`** — when the deck doesn't exist yet, or needs full restructuring. The end-to-end machine.
 - **`/compiledeck`** — when the deck exists and needs compiling or iterating. Don't fire the cannon to edit a slide.
 
 ### Starting a project
@@ -351,7 +351,7 @@ conversationally and writes to think; he has ADHD and aphantasia. Long, dense re
 
 ## Deck Standards — The Goldilocks Principle
 
-This is a general principle, not a deck-skill detail: it applies to any slides we make, whether or not the `beautiful_deck` skill is invoked.
+This is a general principle, not a deck-skill detail: it applies to any slides we make, whether or not the `beautiful-deck` skill is invoked.
 
 **The slides should be beautiful, full stop.** At minimum: formatting is correct, things are in the right proportions, and there are NO cosmetic errors whatsoever (the zero-error constraint, applied to the deck). But beautiful goes further — **beautiful figures and beautiful tables**, not just clean text. The bar: a slide should make someone *want to put their phone down and learn* — to voluntarily shift out of the things that habitually capture their attention and choose to be present in the talk.
 

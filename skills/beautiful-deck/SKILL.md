@@ -1,5 +1,5 @@
 ---
-name: beautiful_deck
+name: beautiful-deck
 description: End-to-end beautiful Beamer deck creation. Designs an original Beamer theme tailored to a specific audience, restructures existing content via the Rhetoric of Decks (ethos / pathos / logos), generates figures and tables from R/Python/Stata code first, embeds code blocks in the deck, produces standalone walkthrough scripts, compiles to zero warnings, runs /tikz for visual collision cleanup, and dispatches a graphics-only audit agent for label and coordinate checks. Use when creating a presentation from scratch or restructuring existing content into a new beautiful deck.
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task
 argument-hint: [content-path-or-description]
@@ -622,7 +622,7 @@ This skill operationalizes those essays. You don't need to re-read them to execu
 
 ## Supporting skills
 
-- `compiledeck` — the mechanical compile loop, preamble templates, palette reference, TikZ rules. `beautiful_deck` references it for these pieces rather than duplicating them.
+- `compiledeck` — the mechanical compile loop, preamble templates, palette reference, TikZ rules. `beautiful-deck` references it for these pieces rather than duplicating them.
 - `tikz` — the measurement-based visual collision audit. Invoked at Step 6.
-- `referee2` — the full five-audit protocol. `beautiful_deck` uses its rhetoric-audit logic in Step 7.
+- `referee2` — the full five-audit protocol. `beautiful-deck` uses its rhetoric-audit logic in Step 7.
 - `split-pdf` — if the source content is a paper the user is reading, split it first and work from the summaries.

@@ -4382,7 +4382,7 @@ def render_skills_hooks():
          "tag": "Deep-read a paper",
          "front": "Download, split, and deeply read an academic PDF. Splits it into 4-page chunks, reads them in small batches, and produces structured reading notes — avoiding the context-window crash <i>and</i> the shallow skim.",
          "back": "Every academic paper, every time (skip only under ~15 pages). Used on victor.pdf (Chernozhukov–Wüthrich–Zhu, conformal inference for synthetic control) → <code>readings/victor_notes/</code>. Say “read / review / summarize this paper.”"},
-        {"icon": "\U0001F3A8", "cmd": "/beautiful_deck", "name": "Beautiful Deck", "color": "#fb7185",
+        {"icon": "\U0001F3A8", "cmd": "/beautiful-deck", "name": "Beautiful Deck", "color": "#fb7185",
          "tag": "The Beamer machine",
          "front": "End-to-end beautiful Beamer deck: an original theme designed for the audience, an ethos / pathos / logos restructure, figures generated from code first, zero-warning compile, then a /tikz pass for visual-collision cleanup.",
          "back": "Fire it when a deck doesn't exist yet or needs a full rebuild. <i>Note: some projects' decks are HTML, so you may use this in sibling projects — it's in your toolkit, not this project's history.</i>"},
