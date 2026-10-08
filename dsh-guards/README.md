@@ -86,7 +86,7 @@ up silently when there is no runner, which is what the Python does too. In this
 harness repo there is no runner, so they are inert here and functional in an
 analysis project.
 
-## Six deliberate deviations from the Python
+## Seven deliberate deviations from the Python
 
 **[A] Tool names.** DSH's tools are `write`, `edit` and `pwsh`, with no
 `MultiEdit` and no `NotebookEdit`. Two original code paths therefore disappear
@@ -124,6 +124,14 @@ captured the script with `[^\s—-]+`, which excludes hyphens — so
 not reported MISSING or UNWIRED; it was **invisible**, which is worse, because
 the check then silently under-enforces while appearing to pass. The capture now
 stops at whitespace.
+
+**[G] The `SCRATCH_RUN` escape hatch accepts the PowerShell spelling.** Repairing
+`[B]` exposed a second problem, found by trying it: dsh's shell on Windows is
+`pwsh`, where `SCRATCH_RUN=1 python ...` is not a command at all — PowerShell
+answers `The term 'SCRATCH_RUN=1' is not recognized`. The guard honoured an escape
+hatch the user could not actually type, and the block message taught the unusable
+form. `$env:SCRATCH_RUN=1; python ...` is now accepted too, and the message shows
+both spellings.
 
 Everything else is a faithful port, including the deliberate residuals: a
 tell-word with **no** RNG in sight is allowed, and a file whose *name* mentions
@@ -175,10 +183,10 @@ The case matrix is self-contained — no fixtures are checked in:
 node dsh-guards/test.mjs      # bundled node also works
 ```
 
-It runs 65 checks and covers both the allow and deny path of every guard, both
+It runs 70 checks and covers both the allow and deny path of every guard, both
 advisory checks against a miniature project (a runner, a deck, a stage canister
-with each of MISSING / UNWIRED / STALE), the `[B]`, `[E]` and `[F]` repairs, and
-the documented residuals.
+with each of MISSING / UNWIRED / STALE), the `[B]`, `[E]`, `[F]` and `[G]`
+repairs, and the documented residuals.
 
 It also covers the listener's decision handling — that it returns the downstream
 decision **unchanged** when it has nothing to say and **spreads** it when it

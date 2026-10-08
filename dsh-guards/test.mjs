@@ -111,6 +111,18 @@ expect('an inherited env var is honoured', (() => {
   return r;
 })(), true);
 
+// [G] dsh's shell is pwsh on Windows, where the POSIX form is not a command.
+expect('[G] the PowerShell spelling is honoured',
+  scratchRunRequested('$env:SCRATCH_RUN=1; python -c "x"'), true);
+expect('[G] a spaced PowerShell assignment is honoured',
+  scratchRunRequested("$env:SCRATCH_RUN = '1'; python -c \"x\""), true);
+expect('[G] a plain PowerShell variable is NOT the env var',
+  scratchRunRequested('$SCRATCH_RUN=1; python -c "x"'), false);
+check('[G] the off-book guard passes a PowerShell-prefixed plot',
+  guardOffbook(shell('$env:SCRATCH_RUN=1; python -c "savefig(1)"')), false);
+check('[G] ...and still blocks the same command without it',
+  guardOffbook(shell('python -c "savefig(1)"')), true);
+
 // ------------------------------------------- post-execution advisories
 // A miniature project: a runner that wires two scripts, a deck, and a stage
 // canister. `findRoot` anchors on the written file's own directory, so the deck

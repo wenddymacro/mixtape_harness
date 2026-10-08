@@ -39,6 +39,10 @@
  *       `[^\s—-]+`, which excludes hyphens -- so `src: code/03-my-figure.py` did
  *       not match at all and the whole entry was invisible, not even reported
  *       MISSING. The capture now stops at whitespace only.
+ *   [G] The `SCRATCH_RUN` escape hatch accepts the PowerShell spelling
+ *       (`$env:SCRATCH_RUN=...`) as well as the POSIX one, because dsh's shell on
+ *       Windows is `pwsh`, where `SCRATCH_RUN=1 cmd` is not a command at all. The
+ *       block message now shows both forms.
  *
  * `node:fs` is imported directly, deliberately. A guard must be synchronous, and
  * the `ctx.fs` service is asynchronous, so the synchronous fs calls existSync /
@@ -234,13 +238,19 @@ const PLOT_RE =
 /**
  * [B] The Python read `os.environ.get("SCRATCH_RUN")` in the hook process, but a
  * PreToolUse hook runs before the tool's shell exists, so a `SCRATCH_RUN=1`
- * prefix lives only in the command string and never reaches the environment.
- * The documented escape hatch therefore never worked. Here the prefix is
- * honoured where it actually appears: leading the command.
+ * prefix lives only in the command string and never reaches the environment. The
+ * documented escape hatch therefore never worked. Here the intent is read from
+ * the command itself.
+ *
+ * [G] Both spellings are accepted, because dsh's shell is `pwsh` on Windows and
+ * the POSIX `VAR=value cmd` form is not a command there -- PowerShell answers
+ * "The term 'SCRATCH_RUN=1' is not recognized". A guard that understood only the
+ * POSIX form would be honouring an escape hatch the user cannot actually type.
  */
 function scratchRunRequested(command) {
   if (process.env.SCRATCH_RUN) return true;
-  return /^\s*(?:\w+=\S*\s+)*SCRATCH_RUN=\S*\s/.test(command);
+  if (/^\s*(?:\w+=\S*\s+)*SCRATCH_RUN=\S*\s/.test(command)) return true; // POSIX
+  return /\$env:SCRATCH_RUN\s*=/i.test(command); // PowerShell
 }
 
 function guardOffbook(exec) {
@@ -261,8 +271,9 @@ function guardOffbook(exec) {
     'it loses the thread back to the data.',
     'Put the plot in a NAMED script (e.g. code/<slug>_<stage>_<purpose>.py, or .R) and wire it',
     'into code/run_pipeline.sh in dependency order.',
-    'Deliberate throwaway work passes with the prefix in the command itself:',
-    '    SCRATCH_RUN=1 python3 -c "..."',
+    'Deliberate throwaway work passes when the command itself says so:',
+    '    POSIX shells:  SCRATCH_RUN=1 python3 -c "..."',
+    '    PowerShell:    $env:SCRATCH_RUN=1; python -c "..."',
   ].join('\n');
 }
 
