@@ -19,3 +19,6 @@ analyses/*
 
 # Word lock files
 ~$*
+
+# disposable /amnesia today note, regenerated every invocation (same rule as reorient/)
+TODAY.md
