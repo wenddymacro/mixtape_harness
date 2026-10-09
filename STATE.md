@@ -313,6 +313,37 @@ DSH does the same thing more thoroughly with a per-section en/zh hash record (`R
 section — replace them with the real repository URL. This working copy is **not a git repository**, so
 the push itself is the researcher's to do.
 
+### PUSHED — PR #2 (2026-10-09)
+
+<https://github.com/wenddymacro/mixtape_harness/pull/2> — branch
+`feat/dsh-bundle-dashboard-bilingual-readme` against `main`. **79 files, +5420 / −295.**
+
+Target repo found by listing the account's public repos: `wenddymacro/mixtape_harness`. The remote was a
+single commit behind in a big way — it had no root bundle at all (`package.json`, `index.js`,
+`cordis.patch.yml`, `test.mjs`, `lib/`), no `code/`, no example, no `README.zh.md`.
+
+**Three decisions taken in the PR that a reviewer may want to reverse**, each written into the commit and
+the PR body rather than buried:
+
+1. **`.gitignore` now ships `code/run_pipeline.sh`, `code/open_dashboard.sh` and `analyses/brazil_caps/`.**
+   `/code/` and `analyses/*` are per-project by design — but the `/pipeline` and `/dashboard` skills call
+   those two scripts **by exact path**, so a clone without them has broken skills, and the README sells the
+   example as runnable. `analyses/*/data/` still stays out. (Git cannot re-include a file inside an
+   excluded directory, so the rule had to become `/code/*` plus two negations.)
+2. **`audits/pipeline_runs/current.json` is ignored** — rewritten before every step, so it is state, not a
+   record. The dated `run_*.json` receipts do ship.
+3. **The working screenshots were trimmed out of the commit** (2.3 MB → 172 KB); only the one STATE.md
+   references, `dash_narrow_sidebar.png`, ships.
+
+**Push mechanics, so it is repeatable:** `gh` was logged in but git had no credential helper, so the push
+used `git -c credential.helper='!gh auth git-credential' push …` — the command-scoped form, which avoids
+writing `credential.helper` into the user's global git config. Network needs the dead proxy unset
+(`unset http_proxy https_proxy …`), same as every clone in this session.
+
+**Still unverified after the push:** the **Git install route**. It follows DSH's own documented form
+(`https://github.com/author/dsh-plugin`) but was never exercised — every install here went through the
+local-path route. The README says so instead of implying otherwise.
+
 ## NEXT
 
 1. **Answer the version question** (gate 2): upgrade `did` to ≥ 2.5.1 and re-run `31_`/`32_`,
