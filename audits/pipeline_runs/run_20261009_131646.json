@@ -1,0 +1,177 @@
+{
+  "run": "20261009_131646",
+  "total_seconds": 159,
+  "failed_step": null,
+  "artifacts_tracked": 27,
+  "counts": {
+    "confirmed": 23,
+    "changed": 3,
+    "missing": 0,
+    "untouched": 1,
+    "new": 0
+  },
+  "verdicts": {
+    "data/clean/brazil_bite_panel.rds": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "84487bece6f0d99f0137bfc65a6169160f154cb5062e0975d452a81dd3efd1a8",
+      "sha256_after": "84487bece6f0d99f0137bfc65a6169160f154cb5062e0975d452a81dd3efd1a8"
+    },
+    "data/derived/br_states.geojson": {
+      "verdict": "untouched",
+      "note": "mtime unchanged: no official step rewrote it",
+      "sha256_before": "f73a5975de5552ffa24d02cab89a07f444e3035a5f8e05943cba844ce0153f1e",
+      "sha256_after": "f73a5975de5552ffa24d02cab89a07f444e3035a5f8e05943cba844ce0153f1e"
+    },
+    "data/derived/csdid_falsif.rds": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "bb7d71975c7b0c0281b235ba1119761a8502cf1b3c317352c1739be6ce3991ab",
+      "sha256_after": "bb7d71975c7b0c0281b235ba1119761a8502cf1b3c317352c1739be6ce3991ab"
+    },
+    "data/derived/csdid_main.rds": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "68cfefaf146ce8edd779c28ff718b939ea7924edc4ecc383b9db7650728aa648",
+      "sha256_after": "68cfefaf146ce8edd779c28ff718b939ea7924edc4ecc383b9db7650728aa648"
+    },
+    "data/derived/csdid_main_dynamic.rds": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "c946d623b85907722bd744d2e9d0c37d1c1a472c2d6ea45eca01fad0b54a1cab",
+      "sha256_after": "c946d623b85907722bd744d2e9d0c37d1c1a472c2d6ea45eca01fad0b54a1cab"
+    },
+    "data/derived/gvar_county.csv": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "ba9497f666fe49dffcb5f56dc16880a43851d73bbc82c3d6e782124c0c3b9b35",
+      "sha256_after": "ba9497f666fe49dffcb5f56dc16880a43851d73bbc82c3d6e782124c0c3b9b35"
+    },
+    "data/derived/panel_clean.csv": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "2d68e225e494534637885717138c5e4de14e2a7dd117f52c3144c50034a61460",
+      "sha256_after": "2d68e225e494534637885717138c5e4de14e2a7dd117f52c3144c50034a61460"
+    },
+    "data/derived/panel_clean_notes.txt": {
+      "verdict": "changed",
+      "note": "rewritten and different: the prior version was inaccurate",
+      "sha256_before": "33a3e6a6ad77c27226823bfe44f79cb66c4357b4f118ea1eac0ac1683fda0930",
+      "sha256_after": "940face64e122edf9340dddd7d4015991964d96d631540a934a4fc1963acd072"
+    },
+    "data/derived/panel_falsif.csv": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "3ef909d6699db461e373332e0b380e89f095d32b5054636b9e555ca28e320918",
+      "sha256_after": "3ef909d6699db461e373332e0b380e89f095d32b5054636b9e555ca28e320918"
+    },
+    "data/derived/panel_falsif_notes.txt": {
+      "verdict": "changed",
+      "note": "rewritten and different: the prior version was inaccurate",
+      "sha256_before": "49f36875c9e4c01374fe5b6d6e99c9cd1c6170be3590de3765e4b12e40660955",
+      "sha256_after": "b51779d1004aac7b92da53b01c764bc3eff830ed95405011ee1943390c88eebb"
+    },
+    "data/derived/power_notes.txt": {
+      "verdict": "changed",
+      "note": "rewritten and different: the prior version was inaccurate",
+      "sha256_before": "efd01d52ecb211c60ec333b29c7e12863b38d738cfea051b3ecc91e0206a2581",
+      "sha256_after": "6122aa9e86ca4aca6d31d09ae6d357bd799c614aa0cea322d60804081a13d78b"
+    },
+    "output/figures/brazil_caps_bite.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "96a3c49ebed88891d173a1ad76e6d5c48a3f72b2a6a069f64704a6b4e5961438",
+      "sha256_after": "96a3c49ebed88891d173a1ad76e6d5c48a3f72b2a6a069f64704a6b4e5961438"
+    },
+    "output/figures/brazil_caps_firstdiff_allmh.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "8cb63adb0bb42d6fe937a72721f83e1bf9a9279231d39b33c053967b76fb6f22",
+      "sha256_after": "8cb63adb0bb42d6fe937a72721f83e1bf9a9279231d39b33c053967b76fb6f22"
+    },
+    "output/figures/brazil_caps_firstdiff_schiz.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "0b235efcc9e6e089df6a50dccad3237b50f3c786c05bcff44f419b432cd796ec",
+      "sha256_after": "0b235efcc9e6e089df6a50dccad3237b50f3c786c05bcff44f419b432cd796ec"
+    },
+    "output/figures/brazil_caps_power.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "d5763248e3177935ff5391ccf1833599650c8be589290447319b0f150da01f11",
+      "sha256_after": "d5763248e3177935ff5391ccf1833599650c8be589290447319b0f150da01f11"
+    },
+    "output/figures/csdid_event_study_falsif.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "75213f79051a3019ba0ccd7873934729ca77228c50d002ce090d7ad310f7f0aa",
+      "sha256_after": "75213f79051a3019ba0ccd7873934729ca77228c50d002ce090d7ad310f7f0aa"
+    },
+    "output/figures/csdid_event_study_main.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "7e4847e11877c2cbbacd52462e512494894f7a182bd9e53afc9992f9ee237cd1",
+      "sha256_after": "7e4847e11877c2cbbacd52462e512494894f7a182bd9e53afc9992f9ee237cd1"
+    },
+    "output/figures/outcome_by_cohort.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "1df7bff97f56a740e464470a97b180aac1fbfee5efdc03708384e06094956767",
+      "sha256_after": "1df7bff97f56a740e464470a97b180aac1fbfee5efdc03708384e06094956767"
+    },
+    "output/figures/pscore_main.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "dbee108df64d443f328e4fcbe2123e097cb719f17ce1ebeb45cbfbb8056ba45d",
+      "sha256_after": "dbee108df64d443f328e4fcbe2123e097cb719f17ce1ebeb45cbfbb8056ba45d"
+    },
+    "output/figures/rollout_panelview.png": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "12bee687f17b91ec7c692cacb700fdefb1d9ac1e40fddd7af7bdd6cede507dcf",
+      "sha256_after": "12bee687f17b91ec7c692cacb700fdefb1d9ac1e40fddd7af7bdd6cede507dcf"
+    },
+    "output/tables/balance_main.tex": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "6ae35c813f99df6689d6737164fdb4ed80eb08c38852df8dc6ebc7258bde4a37",
+      "sha256_after": "6ae35c813f99df6689d6737164fdb4ed80eb08c38852df8dc6ebc7258bde4a37"
+    },
+    "output/tables/brazil_caps_sensitivity_BLOCKED.txt": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "d4d759c8a758a38a0d40f2153d371fab1ee5f7e12cb7570b214848aaa76fd42b",
+      "sha256_after": "d4d759c8a758a38a0d40f2153d371fab1ee5f7e12cb7570b214848aaa76fd42b"
+    },
+    "output/tables/cohort_rollout.tex": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "3964ad16a6507029a1bddcac2abf3cc03cb2a45019e7a7c6402464fd29f3cb72",
+      "sha256_after": "3964ad16a6507029a1bddcac2abf3cc03cb2a45019e7a7c6402464fd29f3cb72"
+    },
+    "output/tables/csdid_falsif_aggregates.tex": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "bd18280710b2359911dfe092a7b7db4965275f982318d7164de0a913a15ef902",
+      "sha256_after": "bd18280710b2359911dfe092a7b7db4965275f982318d7164de0a913a15ef902"
+    },
+    "output/tables/csdid_falsif_results.csv": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "dc758104d870c318b9f795583f93e379db46c571875d36d4fe70d093b2deed2b",
+      "sha256_after": "dc758104d870c318b9f795583f93e379db46c571875d36d4fe70d093b2deed2b"
+    },
+    "output/tables/csdid_main_aggregates.tex": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "bd4ef89f4e807c7bf2b7d8c1f3eaf92102834e5673264290fc20a8eed19e3830",
+      "sha256_after": "bd4ef89f4e807c7bf2b7d8c1f3eaf92102834e5673264290fc20a8eed19e3830"
+    },
+    "output/tables/csdid_main_results.csv": {
+      "verdict": "confirmed",
+      "note": "rewritten and byte-identical: reproduced",
+      "sha256_before": "3def07e06fbf46040308034d5b2201b71fd7223961701618da015ce8afc8775e",
+      "sha256_after": "3def07e06fbf46040308034d5b2201b71fd7223961701618da015ce8afc8775e"
+    }
+  }
+}

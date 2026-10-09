@@ -22,6 +22,166 @@ from urllib.parse import urlparse, parse_qs
 
 ROOT = Path(os.getcwd())
 PORT = int(os.environ.get("PORT", 8080))
+# Identifies THIS dashboard process. Changes on every start, so a client can tell
+# "a new dashboard was activated" from "the page reloaded while it kept running".
+DASHBOARD_INSTANCE = f"{int(time.time())}-{os.getpid()}"
+# Counters. log_message() is silenced below, so the access log cannot answer
+# "did the DSH client plugin poll me?" -- this does, and /api/health reports it.
+METRICS = {"health_hits": 0, "opened": 0, "open_errors": 0}
+
+# =============================================================================
+# LANGUAGE
+# =============================================================================
+# English and Simplified Chinese for the dashboard CHROME. The page is rendered
+# server-side in the selected language rather than swapped in the DOM, so a
+# language change can never leave the page half-translated.
+#
+# WHAT IS NOT TRANSLATED, deliberately: pipeline output. Figure captions, table
+# content, findings.md, checklist.md bodies and the numbers themselves stay in
+# the language their author wrote them in. Translating a caption would silently
+# create a second source of truth for a claim, which is the one thing this
+# harness must not do. The UI says so, rather than leaving the reader to wonder.
+#
+# The choice persists in a cookie ('dsh-lang'), so it survives reloads and the
+# auto-reload that happens when a pipeline run finishes.
+LANG = "en"
+LANGS = ("en", "zh")
+
+I18N = {
+    # --- nav groups and tabs -------------------------------------------------
+    "nav.map":        {"en": "The Map",        "zh": "地图"},
+    "nav.checklist":  {"en": "The Checklist",  "zh": "检查表"},
+    "nav.evidence":   {"en": "The Evidence",   "zh": "证据"},
+    "nav.machinery":  {"en": "The Machinery",  "zh": "机器"},
+    "tab.decks":      {"en": "Decks",          "zh": "幻灯片"},
+    "tab.template":   {"en": "Template",       "zh": "模板"},
+    "tab.checklist":  {"en": "Checklist",      "zh": "检查表"},
+    "tab.figures":    {"en": "Figures",        "zh": "图"},
+    "tab.tables":     {"en": "Tables",         "zh": "表"},
+    "tab.decisions":  {"en": "Decisions",      "zh": "决策"},
+    "tab.code":       {"en": "Code",           "zh": "代码"},
+    "tab.data":       {"en": "Data",           "zh": "数据"},
+    "tab.skills":     {"en": "Skills & Hooks", "zh": "技能与护栏"},
+    "tab.home":       {"en": "Home",           "zh": "首页"},
+    "tab.diffs":      {"en": "Diffs",          "zh": "差异"},
+
+    # --- pipeline box --------------------------------------------------------
+    "pipe.title":      {"en": "The Official Pipeline", "zh": "官方管线"},
+    "pipe.hint":       {"en": "Re-derives every exhibit from raw data and verdicts each one. "
+                              "Or say <code>/pipeline</code> in a Claude Code session.",
+                        "zh": "从原始数据重新推导每一个产物,并逐个给出判定。也可以在会话里说 "
+                              "<code>/pipeline</code>。"},
+    "pipe.last_run":   {"en": "Last official run:", "zh": "最近一次官方运行:"},
+    "pipe.took":       {"en": "It took", "zh": "耗时"},
+    "pipe.expect":     {"en": "start to finish — expect about that when you run it.",
+                        "zh": "—— 你自己跑的时候大概也是这么久。"},
+    "pipe.none":       {"en": "No official run yet.", "zh": "还没有跑过官方管线。"},
+    "pipe.failed":     {"en": "FAILED", "zh": "失败"},
+    "pipe.inaccurate": {"en": "{n} inaccurate", "zh": "{n} 个不准确"},
+    "pipe.cleanwarn":  {"en": "clean, {n} untouched", "zh": "干净,{n} 个未被重写"},
+    "pipe.reproduced": {"en": "fully reproduced", "zh": "完全复现"},
+    "pipe.details":    {"en": "pipeline details", "zh": "管线详情"},
+
+    # --- checklist page ------------------------------------------------------
+    "cl.h2":          {"en": "Checklist", "zh": "检查表"},
+    "cl.intro":       {"en": "The methodological gate upstream of everything. "
+                             "<strong>Click an analysis row</strong> to open its stages and their exhibits in place — "
+                             "each figure/table flips from the exhibit to its description to the scrollable source code "
+                             "that made it (Esc backs out). Per-analysis grid + Step 0 package cards below. Every DiD "
+                             "analysis instantiates <code>analyses/&lt;slug&gt;/checklist.md</code> from the template — "
+                             "the AI invokes <code>/checklist</code> to walk Steps 0–9.",
+                       "zh": "这里是所有事情上游的方法学关口。<strong>点击某一行的分析</strong>可以就地展开它的各阶段"
+                             "与产物 —— 每张图/表都可在「产物 → 描述 → 生成它的源码」之间翻转(Esc 返回)。"
+                             "下方是逐个分析的网格与 Step 0 的包卡片。每个 DiD 分析都从模板实例化出 "
+                             "<code>analyses/&lt;slug&gt;/checklist.md</code>,由 AI 调用 <code>/checklist</code> "
+                             "走完 Step 0–9。"},
+    "cl.grid_hdr":    {"en": "Per-analysis grid", "zh": "逐分析网格"},
+    "cl.grid_help":   {"en": "One row per <code>analyses/&lt;slug&gt;/checklist.md</code>. Each cell shows step status "
+                             "(deliverable paths verified to exist on disk; checkboxes counted from the markdown).",
+                       "zh": "每行对应一个 <code>analyses/&lt;slug&gt;/checklist.md</code>。每个格子显示该步的状态"
+                             "(交付物路径已核实存在于磁盘;复选框从 markdown 里数出来)。"},
+    "cl.legend_done": {"en": "done (locked)", "zh": "已完成(已锁)"},
+    "cl.legend_act":  {"en": "You Are Here (active)", "zh": "你在这里(进行中)"},
+    "cl.legend_open": {"en": "open", "zh": "未完成"},
+    "cl.steps_hdr":   {"en": "What each step means", "zh": "每一步是什么意思"},
+    "cl.steps_help":  {"en": "The Cunningham Checklist in plain language. Step numbers match the stage folder numbers.",
+                       "zh": "用大白话说的 Cunningham 检查表。步号与阶段文件夹编号一致。"},
+    "cl.pkg_hdr":     {"en": "Package cards (Step 0)", "zh": "包卡片(Step 0)"},
+    "cl.pkg_help":    {"en": "One card per package declared in any analysis's <code>packages:</code> frontmatter. "
+                             "<strong>Front:</strong> installed vs required, install source and date. "
+                             "<strong>Back:</strong> URL, description, behavior note, known bugs, dependent analyses.<br>"
+                             "The cards are a reading aid — Step 0 is a Gawande pause, not an automation gate.",
+                       "zh": "每个在分析的 <code>packages:</code> 前注里声明过的包各有一张卡片。"
+                             "<strong>正面:</strong> 已装 vs 要求、安装来源与日期。"
+                             "<strong>背面:</strong> 网址、说明、该版本的行为备注、已知缺陷、依赖它的分析。<br>"
+                             "卡片只是阅读辅助 —— Step 0 是一次 Gawande 停顿,不是自动化关口。"},
+    "cl.pkg_installed": {"en": "Installed:", "zh": "已安装:"},
+    "cl.pkg_required":  {"en": "Required:", "zh": "要求:"},
+    "cl.pkg_source":    {"en": "Source:", "zh": "来源:"},
+    "cl.pkg_on":        {"en": "Installed on:", "zh": "安装于:"},
+    "cl.pkg_none":      {"en": "No analysis has been instantiated yet.", "zh": "还没有实例化任何分析。"},
+    "cl.stage_ideas":   {"en": "ideas", "zh": "想法"},
+    "cl.stage_todo":    {"en": "todo", "zh": "待办"},
+    "cl.stage_find":    {"en": "findings", "zh": "结论"},
+    "cl.stage_exh":     {"en": "exhibits", "zh": "产物"},
+
+    # --- figures / tables pages ---------------------------------------------
+    "fig.h2":    {"en": "Figures", "zh": "图"},
+    "fig.intro": {"en": "Flip-card gallery of figures in <code>output/figures/</code>. Click a figure to open it "
+                        "full-size — it spins in, <strong>F</strong> goes true fullscreen, <strong>&larr; &rarr;</strong> "
+                        "cycle between figures, <strong>Esc</strong> returns.",
+                  "zh": "<code>output/figures/</code> 里图的翻转卡片墙。点开一张图放大 —— 它会转进来,"
+                        "<strong>F</strong> 进真全屏,<strong>&larr; &rarr;</strong> 在图中切换,"
+                        "<strong>Esc</strong> 返回。"},
+    "tbl.h2":    {"en": "Tables", "zh": "表"},
+    "tbl.intro": {"en": "Flip-card gallery of pipeline-produced tables. Each card shows the table with the source "
+                        "script that made it and its status. The badge under a name is the verdict from the "
+                        "<strong>last official pipeline run</strong> — green means re-running the pipeline reproduced "
+                        "the file byte-for-byte. Every table here traces back to a wired script.",
+                  "zh": "管线产出的表的翻转卡片墙。每张卡显示表本身、生成它的脚本、以及它的状态。"
+                        "名字下方的徽章是<strong>最近一次官方管线运行</strong>给出的判定 —— 绿色表示重跑管线"
+                        "逐字节复现了这个文件。这里每张表都能追溯到一根接好的脚本。"},
+    "i18n.note": {"en": "UI language. Pipeline output — captions, tables, findings — stays in the language it was written in.",
+                  "zh": "界面语言。管线产出(图注、表、结论)保持作者写下时的语言,不翻译。"},
+    "lang.btn":  {"en": "中文", "zh": "EN"},
+    "checking":  {"en": "checking the official pipeline…", "zh": "正在检查官方管线…"},
+}
+
+# Strings the CLIENT composes at poll time (they embed live numbers), so they must
+# live in JS. Templates rather than fragments, because word order differs between
+# the two languages and gluing translated pieces together produces nonsense.
+I18N_LIVE = {
+    "running": {"en": "● RUNNING — step {step} of {total} ({pct}%), {age} elapsed",
+                "zh": "● 运行中 — 第 {step}/{total} 步({pct}%),已用 {age}"},
+    "stale":   {"en": "● STOPPED EARLY — run {stamp} died without finishing; see its log in audits/pipeline_runs/.",
+                "zh": "● 提前中断 — 运行 {stamp} 的进程已消失,没有跑完;见 audits/pipeline_runs/ 里的日志。"},
+    "fin_ok":  {"en": "● IDLE — last run clean in {dur}.{report}",
+                "zh": "● 空闲 — 上次运行干净完成,用时 {dur}。{report}"},
+    "fin_bad": {"en": "● IDLE — last run had a failed step.{report}",
+                "zh": "● 空闲 — 上次运行有一步失败。{report}"},
+    "idle":    {"en": "○ IDLE — no official run in progress.{report}",
+                "zh": "○ 空闲 — 当前没有官方运行。{report}"},
+    "cmd":     {"en": " — {cmd}", "zh": " — {cmd}"},
+    "report":  {"en": " Report written {mtime}.", "zh": " 报告写于 {mtime}。"},
+    "hint":    {"en": "Figures and verdicts appear as each step finishes — no need to reload.",
+                "zh": "图和判定会随着每一步完成自动出现 —— 不需要刷新。"},
+}
+
+
+def T(key):
+    """Chrome string for the active language. Falls back to English."""
+    entry = I18N.get(key)
+    if not entry:
+        return key
+    return entry.get(LANG) or entry.get("en") or key
+
+
+def TF(key, **kw):
+    """T() with {placeholders} substituted."""
+    s = T(key)
+    for k, v in kw.items():
+        s = s.replace("{" + k + "}", str(v))
+    return s
 
 # =============================================================================
 # FROZEN STRUCTURE
@@ -35,11 +195,12 @@ PIPELINE_SCRIPTS = [
     {"script": "scripts/r/00_bite_inspect.R", "outputs": ["data/clean/brazil_bite_panel.rds"], "level": 4, "name": "Bite: load & inspect brazil.dta"},
     {"script": "scripts/r/01_bite_national_trends.R", "outputs": ["output/figures/brazil_caps_bite.png"], "level": 4, "name": "Bite: national admission trends"},
     {"script": "scripts/r/02_bite_maps.R", "outputs": ["output/figures/brazil_caps_firstdiff_schiz.png", "output/figures/brazil_caps_firstdiff_allmh.png"], "level": 4, "name": "Bite: first-difference state maps"},
+    {"script": "scripts/r/06_power.R", "outputs": ["output/figures/brazil_caps_power.png"], "level": 4, "name": "Power / minimum detectable effect"},
     {"script": "scripts/r/30_build_gvar.R", "outputs": ["data/derived/gvar_county.csv"], "level": 5, "name": "Build cohort gvar"},
     {"script": "scripts/r/30b_build_panel_clean.R", "outputs": ["data/derived/panel_clean.csv"], "level": 5, "name": "Build clean panel (main)"},
     {"script": "scripts/r/30c_build_panel_falsif.R", "outputs": ["data/derived/panel_falsif.csv"], "level": 5, "name": "Build falsification panel"},
     {"script": "scripts/r/31_csdid_main.R", "outputs": ["output/figures/csdid_event_study_main.png", "output/tables/csdid_main_results.csv", "output/tables/csdid_main_aggregates.tex", "output/figures/rollout_panelview.png", "output/figures/outcome_by_cohort.png", "output/tables/balance_main.tex", "output/tables/cohort_rollout.tex", "output/figures/pscore_main.png"], "level": 5, "name": "CS-DiD (staggered, main)"},
-    {"script": "scripts/r/32_csdid_falsif.R", "outputs": ["output/figures/csdid_event_study_falsif.png", "output/tables/csdid_falsif_results.csv", "output/tables/csdid_falsif_aggregates.tex"], "level": 5, "name": "CS-DiD (falsification)"},
+    {"script": "scripts/r/32_csdid_falsif.R", "outputs": ["output/figures/csdid_event_study_falsif.png", "output/tables/csdid_falsif_results.csv", "output/tables/csdid_falsif_aggregates.tex", "output/tables/brazil_caps_sensitivity.tex", "output/figures/brazil_caps_sensitivity.png"], "level": 5, "name": "CS-DiD (falsification + HonestDiD sensitivity)"},
 ]
 
 FIGURE_SCRIPT_MAP = {
@@ -50,6 +211,8 @@ FIGURE_SCRIPT_MAP = {
     "brazil_caps_bite":              "scripts/r/01_bite_national_trends.R",
     "brazil_caps_firstdiff_schiz":   "scripts/r/02_bite_maps.R",
     "brazil_caps_firstdiff_allmh":   "scripts/r/02_bite_maps.R",
+    "brazil_caps_power":             "scripts/r/06_power.R",
+    "brazil_caps_sensitivity":       "scripts/r/32_csdid_falsif.R",
     # causal layer (staggered Callaway-Sant'Anna)
     "csdid_event_study_main":        "scripts/r/31_csdid_main.R",
     "csdid_event_study_falsif":      "scripts/r/32_csdid_falsif.R",
@@ -102,54 +265,86 @@ COURTROOM_HYPOTHESES = {
 # its analyses/<slug> instance.
 CHECKLIST_STEPS = [
     {"num": 0, "folder": "00_packages", "name": "Package preflight",
+     "name_zh": "包预检",
      "desc": "Eyeball every estimator's version (Gawande pause)",
      "summary": "Before anything runs, you look at the version of every estimation package with your own eyes and type it in. "
                 "Different versions of the same package can give different answers, and only a person looking will notice.",
+     "summary_zh": "在跑任何东西之前,你亲眼把每个估计包的版本看一遍,然后自己打进去。"
+                   "同一个包的不同版本可能给出不同答案,而只有人去看才会注意到。",
      "expected": []},
     {"num": 1, "folder": "01_target", "name": "Target estimand",
+     "name_zh": "目标参数",
      "desc": "Y(1)-Y(0), the population, and non-negative weights summing to one; decide population weighting and say why",
      "summary": "Say exactly what you are trying to estimate: a treatment effect Y(1)-Y(0), for a named population, with weights that are non-negative and sum to one (ATT, ATE, LATE, and so on). "
                 "Decide whether to weight by population and say why. Choosing a target is a judgment about what the policymaker needs, so write down why this one and not the others.",
+     "summary_zh": "说清楚你到底要估什么:一个处理效应 Y(1)-Y(0),针对一个点名的总体,权重非负且加总为 1"
+                   "(ATT、ATE、LATE 等)。决定要不要按人口加权,并说明理由。选目标是关于决策者需要什么的判断,"
+                   "所以要写下为什么选这个、而不是别的。",
      "expected": []},
     {"num": 2, "folder": "02_bite", "name": "Bite",
+     "name_zh": "咬合(处理的一阶效应)",
      "desc": "The treatment's first-order effects: where it created variation (maps + time series for regional panels)",
      "summary": "Show that the treatment actually did something first-order: where it landed, when, and for how long. "
                 "This builds credibility and helps design the study. With regional panels, make maps and time-series plots.",
+     "summary_zh": "先证明处理确实产生了一阶效应:它落在哪里、什么时候发生、持续多久。这既建立可信度,也帮助设计研究。"
+                   "如果是区域面板,就画地图和时间序列图。",
      "expected": []},
     {"num": 3, "folder": "03_covariates_balance", "name": "Covariates & balance",
+     "name_zh": "协变量与平衡",
      "desc": "X chosen to remove bias (Y(0) trends for DiD); std. diff > 0.25 = imbalanced; pscore trimming, separation, ~10 treated per covariate",
      "summary": "Pick covariates to remove bias, not to explain the outcome. For diff-in-diff that means covariates that drive trends in the untreated outcome and differ between treated and control. "
                 "Then check balance: a standardized difference above 0.25 is imbalanced; trim extreme propensity scores; watch for no overlap; keep about 10 treated units per covariate.",
+     "summary_zh": "选协变量是为了消除偏误,不是为了解释结果。对双重差分来说,要选那些驱动「未处理结果」趋势、"
+                   "且在处理组与控制组之间有差异的协变量。然后检查平衡:标准化差异超过 0.25 就算不平衡;"
+                   "极端倾向得分要截断;注意有没有重叠;每个协变量大约保留 10 个处理单位。",
      "expected": []},
     {"num": 4, "folder": "04_sample_shares", "name": "Sample shares",
+     "name_zh": "样本份额",
      "desc": "Treated units by group-time; cohort shares N_g/N_T drive the CS aggregation",
      "summary": "Count the treated units in each cohort. Callaway-Sant'Anna weights cohorts by their share of treated units (N_g / N_T), "
                 "so one large cohort can dominate the overall estimate. Know the shares before you aggregate.",
+     "summary_zh": "数清每个 cohort 里有多少处理单位。Callaway-Sant'Anna 按处理单位占比 N_g / N_T 给各 cohort 加权,"
+                   "所以一个大 cohort 可能主导总体估计。聚合之前先把这些份额搞清楚。",
      "expected": []},
     {"num": 5, "folder": "05_outcome_trends", "name": "Outcome trends by group",
+     "name_zh": "分组结果趋势",
      "desc": "Pre-treatment only, don't peek (Rubin 2008); optional pre-period 2x2s",
      "summary": "Plot the outcome over time for treated and comparison groups and ask whether they look comparable before treatment. "
                 "Do not look at post-treatment outcomes yet (Rubin 2008). Pre-period 2x2s give you the event-study leads without peeking.",
+     "summary_zh": "画出结果随时间的变化,比较处理组与对照组,问它们在处理之前看起来是否可比。"
+                   "先不要看处理后的结果(Rubin 2008)。处理前的 2×2 可以在不偷看的前提下给出事件研究的 lead。",
      "expected": []},
     {"num": 6, "folder": "06_power", "name": "Power calculation",
+     "name_zh": "功效计算",
      "desc": "Are we powered for this study? What's the MDE?",
      "summary": "Before estimating, ask whether this design could detect an effect of a meaningful size. "
                 "Compute the minimum detectable effect, so a null result can be read honestly.",
+     "summary_zh": "在估计之前先问:这个设计能不能检测出有意义大小的效应?算出最小可检测效应(MDE),"
+                   "这样万一结果是零,才能被诚实地解读。",
      "expected": []},
     {"num": 7, "folder": "07_estimator_eventstudy", "name": "Estimator + event study",
+     "name_zh": "估计量与事件研究",
      "desc": "Estimator whose identifying assumptions are most realistic for the Step 1 estimand; name any new assumptions; event studies",
      "summary": "Choose the estimator whose identifying assumptions are most believable in this data for the Step 1 target, and the one most robust to heterogeneous treatment effects. "
                 "If you move away from it, say what new assumptions you are taking on. Then run it and make the event studies.",
+     "summary_zh": "选一个估计量:在这份数据、这个 Step 1 目标下,它的识别假设最可信,同时它最不受异质处理效应影响。"
+                   "如果你偏离了它,要说清楚你新承担了什么假设。然后跑它,画事件研究图。",
      "expected": []},
     {"num": 8, "folder": "08_falsification", "name": "Falsification & sensitivity",
+     "name_zh": "证伪与敏感性",
      "desc": "Popperian placebo outcomes; Rambachan-Roth credible parallel trends (M grid)",
      "summary": "Try to break your own result. Test outcomes or groups that share the confounders but should show no effect, "
                 "and run Rambachan-Roth sensitivity analysis to see how large a violation of parallel trends it would take to overturn the finding.",
+     "summary_zh": "试着推翻你自己的结果。去检验那些共享混淆因素、但本不该出现效应的结果或分组,"
+                   "并做 Rambachan-Roth 敏感性分析,看看平行趋势要被违反到什么程度才会推翻你的发现。",
      "expected": []},
     {"num": 9, "folder": "09_rerun", "name": "Rerun",
+     "name_zh": "重跑",
      "desc": "Version check first, then rerun if the estimator misbehaves",
      "summary": "If the estimator misbehaves (missing standard errors, singular-matrix warnings), check the package version first, then the encodings, then rerun. "
                 "The usual culprit is the software, not the data.",
+     "summary_zh": "如果估计量行为异常(标准误缺失、奇异矩阵警告),先查包版本,再查编码,然后重跑。"
+                   "通常的元凶是软件,不是数据。",
      "expected": []},
 ]
 
@@ -166,16 +361,27 @@ def _step_meta(num_str):
     return None
 
 
+def _legend_html():
+    """The three-colour key, in the active language."""
+    return (f'<span class="legend"><span class="cell-done">●</span> {T("cl.legend_done")} · '
+            f'<span class="cell-active">●</span> {T("cl.legend_act")} · '
+            f'<span class="cell-open">●</span> {T("cl.legend_open")}</span>')
+
+
 def render_step_guide():
     """Plain-language 'what each step means' list, rendered under the checklist grid."""
     rows = ""
+    zh = (LANG == "zh")
     for st in CHECKLIST_STEPS:
+        nm = (st.get("name_zh") or st["name"]) if zh else st["name"]
+        sm = (st.get("summary_zh") or st["summary"]) if zh else st["summary"]
+        folder_word = "阶段文件夹" if zh else "folder"
         rows += (f'<div class="check-step"><div class="check-num pending">{st["num"]}</div>'
-                 f'<div class="check-content"><div class="check-name">{html_mod.escape(st["name"])} '
-                 f'<span style="font-weight:400;color:var(--muted);font-size:0.7rem;">· folder <code>{st["folder"]}</code></span></div>'
-                 f'<div class="check-desc" style="font-size:0.8rem;line-height:1.45;">{html_mod.escape(st["summary"])}</div></div></div>')
-    return ('<div class="checklist-section"><div class="checklist-section-hdr">What each step means</div>'
-            '<p class="checklist-help">The Cunningham Checklist in plain language. Step numbers match the stage folder numbers.</p>'
+                 f'<div class="check-content"><div class="check-name">{html_mod.escape(nm)} '
+                 f'<span style="font-weight:400;color:var(--muted);font-size:0.7rem;">· {folder_word} <code>{st["folder"]}</code></span></div>'
+                 f'<div class="check-desc" style="font-size:0.8rem;line-height:1.45;">{html_mod.escape(sm)}</div></div></div>')
+    return (f'<div class="checklist-section"><div class="checklist-section-hdr">{T("cl.steps_hdr")}</div>'
+            f'<p class="checklist-help">{T("cl.steps_help")}</p>'
             f'{rows}</div>')
 
 # =============================================================================
@@ -948,10 +1154,10 @@ def render_package_cards(analyses):
             <div class="fig-front pkg-card pkg-{status}">
               <div class="pkg-name">{html_mod.escape(name)}</div>
               <div class="pkg-status pkg-status-{status}">{status.upper()}</div>
-              <div class="pkg-row"><span class="pkg-label">Installed:</span> <code>{html_mod.escape(live_installed or decl_installed or "?")}</code></div>
-              <div class="pkg-row"><span class="pkg-label">Required:</span> <code>{html_mod.escape(req)}</code></div>
-              <div class="pkg-row"><span class="pkg-label">Source:</span> {html_mod.escape(install_source) or "—"}</div>
-              <div class="pkg-row"><span class="pkg-label">Installed on:</span> {html_mod.escape(install_date) or "—"}</div>
+              <div class="pkg-row"><span class="pkg-label">{T("cl.pkg_installed")}</span> <code>{html_mod.escape(live_installed or decl_installed or "?")}</code></div>
+              <div class="pkg-row"><span class="pkg-label">{T("cl.pkg_required")}</span> <code>{html_mod.escape(req)}</code></div>
+              <div class="pkg-row"><span class="pkg-label">{T("cl.pkg_source")}</span> {html_mod.escape(install_source) or "—"}</div>
+              <div class="pkg-row"><span class="pkg-label">{T("cl.pkg_on")}</span> {html_mod.escape(install_date) or "—"}</div>
               {drift_html}
             </div>
             <div class="fig-back pkg-card pkg-{status}">
@@ -983,7 +1189,7 @@ def render_checklist_per_analysis():
         <div class="checklist-section">
           <div class="checklist-section-hdr">The checklist (pinned)</div>
           <p class="checklist-help">The canonical DiD checklist — the felt board of what every analysis must do. No analysis has been instantiated yet; the row below is the empty template. The AI invokes <code>/checklist</code> to create <code>analyses/&lt;slug&gt;/checklist.md</code> and walk Steps 0–9.
-          <span class="legend"><span class="cell-done">●</span> done (locked) · <span class="cell-active">●</span> You Are Here (active) · <span class="cell-open">●</span> open</span></p>
+          {_legend_html()}</p>
           <table class="analysis-grid">
             <thead><tr><th>Slug</th>{cols}</tr></thead>
             <tbody><tr class="analysis-row">
@@ -1014,9 +1220,9 @@ def render_checklist_per_analysis():
 
     grid_html = f'''
         <div class="checklist-section">
-          <div class="checklist-section-hdr">Per-analysis grid</div>
-          <p class="checklist-help">One row per <code>analyses/&lt;slug&gt;/checklist.md</code>. Each cell shows step status (deliverable paths verified to exist on disk; checkboxes counted from the markdown).
-          <span class="legend"><span class="cell-done">●</span> done (locked) · <span class="cell-active">●</span> You Are Here (active) · <span class="cell-open">●</span> open</span></p>
+          <div class="checklist-section-hdr">{T("cl.grid_hdr")}</div>
+          <p class="checklist-help">{T("cl.grid_help")}
+          {_legend_html()}</p>
           <table class="analysis-grid">
             <thead>
               <tr>
@@ -1033,8 +1239,8 @@ def render_checklist_per_analysis():
 
     pkg_html = f'''
         <div class="checklist-section">
-          <div class="checklist-section-hdr">Package cards (Step 0)</div>
-          <p class="checklist-help">One card per package declared in any analysis's <code>packages:</code> frontmatter. <strong>Front:</strong> installed vs required, install source and date. <strong>Back:</strong> URL, description, behavior note, known bugs, dependent analyses.<br>The cards are a reading aid — Step 0 is a Gawande pause, not an automation gate.</p>
+          <div class="checklist-section-hdr">{T("cl.pkg_hdr")}</div>
+          <p class="checklist-help">{T("cl.pkg_help")}</p>
           {render_package_cards(analyses)}
         </div>
     '''
@@ -1917,6 +2123,28 @@ def parse_latex_table(text):
     """Attempt to render a LaTeX tabular as HTML. Returns HTML or None if unparseable."""
     if "\\begin{tabular" not in text:
         return None
+
+    # LaTeX symbol commands, mapped to the character they mean. Without this the
+    # generic backslash-stripping below turns "\\textsuperscript{\\dag}" into
+    # "textsuperscriptdag" -- so a balance table's footnote markers render as
+    # gibberish glued to the covariate label.
+    _tex_symbols = {
+        "\\dag": "\u2020", "\\dagger": "\u2020",
+        "\\ddag": "\u2021", "\\ddagger": "\u2021",
+        "\\ast": "*", "\\star": "*", "\\bullet": "\u2022",
+        "\\S": "\u00a7", "\\P": "\u00b6", "\\%": "%",
+    }
+
+    def _clean_cell(c):
+        # \textsuperscript{X} -> the superscript character X stands for
+        def _sup(m):
+            inner = m.group(1).strip()
+            return _tex_symbols.get(inner, inner.lstrip("\\"))
+        c = re.sub(r"\\textsuperscript\{([^{}]*)\}", _sup, c)
+        for k, v in _tex_symbols.items():
+            c = c.replace(k, v)
+        return c.replace("\\textbf{", "").replace("\\emph{", "").replace("}", "").replace("\\", "")
+
     try:
         # Extract between \begin{tabular} and \end{tabular}
         start = text.index("\\begin{tabular")
@@ -1930,7 +2158,7 @@ def parse_latex_table(text):
                 continue
             if "&" in line:
                 cells = [c.strip().rstrip("\\\\").strip() for c in line.split("&")]
-                cells = [c.replace("\\textbf{", "").replace("}", "").replace("\\", "") for c in cells]
+                cells = [_clean_cell(c) for c in cells]
                 rows.append(cells)
         if not rows:
             return None
@@ -2699,6 +2927,25 @@ td { padding:0.5rem; border-bottom:1px solid var(--border); }
 .ritual-banner code { background:var(--surface2); padding:0.05rem 0.3rem; border-radius:3px; font-size:0.85em; }
 .ritual-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.6rem; align-items:start; margin-bottom:2rem; }
 @media (max-width: 1100px) { .ritual-grid { grid-template-columns:1fr; } }
+/* Narrow pane — the dashboard normally lives in DSH's right-sidebar browser, which
+   is a few hundred pixels wide, not a full window. The fixed 200px nav plus 2rem of
+   main padding left roughly 470px for content, so prose wrapped into tall columns
+   and the status strip truncated mid-sentence. This is the breakpoint that makes it
+   readable there. */
+@media (max-width: 900px) {
+  nav { width:auto; flex-direction:row; flex-wrap:wrap; align-items:center; gap:0.2rem;
+        padding:0.5rem 0.6rem; border-right:none; border-bottom:1px solid var(--border);
+        position:static; height:auto; overflow:visible; }
+  nav .title { width:100%; margin-bottom:0.3rem; }
+  nav .group { display:none; }
+  nav .btn { padding:0.3rem 0.5rem; font-size:0.75rem; border-left:none; }
+  .theme-toggle { margin:0 0.3rem 0 0; padding:0.25rem 0.5rem; font-size:0.7rem; }
+  body { flex-direction:column; }
+  main { padding:0.9rem; }
+  .pipeline-strip { flex-wrap:wrap; gap:0.35rem; }
+  .pipeline-strip-live { white-space:normal; overflow:visible; text-overflow:clip; }
+  .fig-card img, .fig-flip-container { max-width:100%; }
+}
 .ritual-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:1.6rem 1.8rem 1.2rem; box-shadow:0 1px 3px rgba(0,0,0,0.04); position:relative; }
 .ritual-arrival { border-top:3px solid var(--green); }
 .ritual-departure { border-top:3px solid var(--accent); }
@@ -2983,6 +3230,20 @@ td { padding:0.5rem; border-bottom:1px solid var(--border); }
 .fig-prev { left:2.5vw; } .fig-next { right:2.5vw; }
 #fig-overlay:not(.open) .fig-nav { display:none; }
 .fig-modal-counter { font-size:0.75rem; color:var(--muted); margin-left:0.6rem; font-family:'SF Mono',monospace; }
+/* The always-visible pipeline status strip. The dashboard is usually read inside
+   DSH's right-sidebar browser, where the reader may be on ANY tab -- so the one
+   line that says what the pipeline is doing has to follow them, not live on one
+   view. Sticky, so it survives scrolling too. */
+.pipeline-strip { position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:0.8rem;
+  justify-content:space-between; padding:0.42rem 0.9rem; margin:0 0 1rem;
+  background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+  font-size:0.74rem; color:var(--muted); }
+.pipeline-strip.running { border-color:var(--accent); color:var(--text); }
+.pipeline-strip.stale, .pipeline-strip.bad { border-color:var(--red); color:var(--text); }
+.pipeline-strip.ok { border-color:var(--border); }
+.pipeline-strip-live { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pipeline-strip-link { color:var(--accent); text-decoration:none; font-size:0.72rem; flex:0 0 auto; }
+.pipeline-strip-link:hover { text-decoration:underline; }
 """
 
 JS = """
@@ -3016,6 +3277,16 @@ function toggleTheme() {
 _applyTheme();
 document.addEventListener('DOMContentLoaded', _syncThemeButton);
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', _syncThemeButton);
+
+// UI language. The page is rendered server-side in the chosen language, so this
+// writes the cookie and reloads rather than swapping strings in the DOM -- the
+// latter can leave a half-translated page, which is worse than an honest reload.
+function toggleLang() {
+  const cur = (document.documentElement.lang || 'en').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+  const next = cur === 'zh' ? 'en' : 'zh';
+  document.cookie = 'dsh-lang=' + next + '; path=/; max-age=31536000; SameSite=Lax';
+  location.reload();
+}
 
 function show(id) {
   var view = document.getElementById('v-'+id);
@@ -3213,7 +3484,7 @@ function reorderCards(list) {
   const grid = list.closest('.fig-split').querySelector('.fig-grid');
   if (!grid) return;
   items.forEach(item => {
-    const targetId = item.getAttribute('onclick')?.match(/getElementById\('([^']+)'\)/)?.[1];
+    const targetId = item.getAttribute('onclick')?.match(/getElementById\\('([^']+)'\\)/)?.[1];
     if (targetId) {
       const card = document.getElementById(targetId);
       if (card) grid.appendChild(card);
@@ -3223,7 +3494,7 @@ function reorderCards(list) {
 async function saveListOrder(list) {
   const items = [...list.querySelectorAll('.fig-list-item')];
   const ids = items.map(el => {
-    const m = el.getAttribute('onclick')?.match(/getElementById\('([^']+)'\)/);
+    const m = el.getAttribute('onclick')?.match(/getElementById\\('([^']+)'\\)/);
     return m ? m[1] : null;
   }).filter(Boolean);
   const viewId = list.closest('.view')?.id || 'unknown';
@@ -3624,6 +3895,89 @@ function refreshScale() {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Official pipeline — live status.
+// Polls /api/pipeline (read-only) and rewrites every .pipeline-live line, so a
+// run in progress is visible while it happens rather than only afterwards. The
+// runner writes audits/pipeline_runs/current.json before each step.
+// ---------------------------------------------------------------------------
+function _pipeFmt(s) {
+  if (s == null) return '0s';
+  if (s < 60) return Math.round(s) + 's';
+  return Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's';
+}
+function _pipeFill(tpl, vals) {
+  return String(tpl || '').replace(/\\{(\\w+)\\}/g, function (m, k) {
+    return (vals[k] === undefined || vals[k] === null) ? '' : String(vals[k]);
+  });
+}
+function _pipeCompact(st) {
+  const L = window.I18N_LIVE || {};
+  const cur = st && st.current;
+  const last = st && st.last;
+  const rep = (last && last.mtime) ? _pipeFill(L.report, { mtime: last.mtime }) : '';
+  if (cur && cur.state === 'running') {
+    const step = cur.current_step || 0, total = cur.total_steps || 0;
+    const pct = total ? Math.round(100 * step / total) : 0;
+    const age = _pipeFmt(Math.max(0, Math.round(Date.now() / 1000 - (cur.started || 0))));
+    let text = _pipeFill(L.running, { step: step, total: total, pct: pct, age: age });
+    if (cur.current_cmd) text += _pipeFill(L.cmd, { cmd: cur.current_cmd });
+    return { cls: 'running', text: text };
+  }
+  if (cur && cur.state === 'stale') {
+    return { cls: 'stale', text: _pipeFill(L.stale, { stamp: cur.stamp || 'unknown' }) };
+  }
+  if (cur && cur.state === 'finished') {
+    const t = _pipeFill(cur.ok ? L.fin_ok : L.fin_bad,
+                        { dur: _pipeFmt(cur.total_seconds), report: rep });
+    return { cls: cur.ok ? 'ok' : 'bad', text: t };
+  }
+  return { cls: 'ok', text: _pipeFill(L.idle, { report: rep }) };
+}
+function _pipeRender(st) {
+  const cur = st && st.current;
+  const last = st && st.last;
+  const strip = _pipeCompact(st);
+  document.querySelectorAll('.pipeline-strip').forEach(function (el) {
+    el.className = 'pipeline-strip' + (strip.cls ? ' ' + strip.cls : '');
+  });
+  document.querySelectorAll('.pipeline-strip-live').forEach(function (el) {
+    el.textContent = strip.text;
+  });
+  const accent = { running: 'var(--accent)', stale: 'var(--red)', bad: 'var(--red)' }[strip.cls];
+  let html = accent ? '<strong style="color:' + accent + ';">' + strip.text + '</strong>' : strip.text;
+  if (strip.cls === 'running' && cur && cur.current_cmd) {
+    html += '<br><code style="font-size:0.72rem;">' + cur.current_cmd + '</code>'
+          + '<br><span style="color:var(--muted);">' + ((window.I18N_LIVE || {}).hint || '') + '</span>';
+  }
+  document.querySelectorAll('.pipeline-live').forEach(function (el) { el.innerHTML = html; });
+}
+let _pipeWasRunning = false;
+function _pipeTick() {
+  fetch('/api/pipeline', { cache: 'no-store' }).then(function (r) {
+    if (!r.ok) return null;
+    return r.json();
+  }).then(function (st) {
+    if (!st) return;
+    const running = !!(st.current && st.current.state === 'running');
+    _pipeRender(st);
+    // A run that has just ended rewrote files on disk. Reload exactly once so the
+    // grid, verdict badges and figure list show the new state instead of the old.
+    if (_pipeWasRunning && !running) { setTimeout(function () { location.reload(); }, 800); return; }
+    _pipeWasRunning = running;
+  }).catch(function () { /* server restarting; the next tick will retry */ });
+}
+function _pipeInit() {
+  if (!document.querySelector('.pipeline-live') && !document.querySelector('.pipeline-strip')) return;
+  _pipeTick();
+  setInterval(_pipeTick, 3000);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _pipeInit);
+} else {
+  _pipeInit();
+}
 """
 
 
@@ -3691,6 +4045,109 @@ def official_verdicts():
     return rep.get("verdicts", {}), rep.get("run")
 
 
+def pipeline_state():
+    """Live state of the official pipeline: what the runner is doing right now,
+    plus the newest finished run. Powers /api/pipeline, which the page polls.
+
+    The runner writes audits/pipeline_runs/current.json before each step. That
+    file carries the runner's own pid, so a run that was killed mid-flight is
+    reported as 'stale' instead of looking like it is still going -- a progress
+    bar that lies is worse than no progress bar.
+    """
+    import json as _json
+    import os as _os
+    runs_dir = ROOT / "audits" / "pipeline_runs"
+    cur = None
+    sp = runs_dir / "current.json"
+    if sp.exists():
+        try:
+            cur = _json.loads(sp.read_text(encoding="utf-8"))
+            if cur.get("state") == "running":
+                pid = cur.get("pid")
+                alive = False
+                if pid:
+                    try:
+                        _os.kill(int(pid), 0)
+                        alive = True
+                    except PermissionError:
+                        alive = True          # exists, just not ours to signal
+                    except OSError:
+                        alive = False
+                if not alive:
+                    cur["state"] = "stale"
+        except Exception:
+            cur = None
+
+    last = None
+    runs = sorted(runs_dir.glob("run_*.json")) if runs_dir.exists() else []
+    if runs:
+        try:
+            rep = _json.loads(runs[-1].read_text(encoding="utf-8"))
+            last = {
+                "run": rep.get("run"),
+                "all_steps_ok": rep.get("all_steps_ok"),
+                "steps_ran": rep.get("steps_ran"),
+                "steps_total": rep.get("steps_total"),
+                "total_seconds": rep.get("total_seconds"),
+                "failed_step": rep.get("failed_step"),
+                "counts": rep.get("counts", {}),
+                "mtime": datetime.fromtimestamp(runs[-1].stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        except Exception:
+            last = None
+    return {"current": cur, "last": last}
+
+
+def render_pipeline_box():
+    """The Official Pipeline box: the one command, the last run's verdict, and a
+    live line the page refreshes by polling /api/pipeline."""
+    st = pipeline_state()
+    last = st.get("last")
+    if last:
+        bad = (last["counts"].get("changed", 0) or 0) + (last["counts"].get("missing", 0) or 0)
+        warn = last["counts"].get("untouched", 0) or 0
+        ok = last.get("all_steps_ok")
+        sc = "var(--red)" if (ok is False or bad) else ("var(--yellow)" if warn else "var(--green)")
+        st_txt = (T("pipe.failed") if ok is False
+                  else TF("pipe.inaccurate", n=bad) if bad
+                  else TF("pipe.cleanwarn", n=warn) if warn
+                  else T("pipe.reproduced"))
+        tot = last.get("total_seconds") or 0
+        dur = f"{int(tot // 60)}m {int(tot % 60)}s" if tot >= 60 else f"{int(tot)}s"
+        last_line = (f'{T("pipe.last_run")} <strong>{html_mod.escape(str(last["run"]))}</strong> &mdash; '
+                     f'<strong style="color:{sc};">{st_txt}</strong>. {T("pipe.took")} <strong>{dur}</strong> '
+                     f'{T("pipe.expect")}')
+    else:
+        last_line = f'<strong style="color:var(--red);">{T("pipe.none")}</strong>'
+
+    return (f'<div style="border:1px solid var(--border);background:var(--surface);border-radius:6px;'
+            f'padding:0.8rem 1rem;margin-bottom:1rem;">'
+            f'<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;'
+            f'color:var(--muted);margin-bottom:0.3rem;">{T("pipe.title")}</div>'
+            f'<code style="display:block;background:var(--surface2);border:1px solid var(--border);'
+            f'border-radius:4px;padding:0.45rem 0.7rem;font-size:0.78rem;margin-bottom:0.4rem;">'
+            f'bash code/run_pipeline.sh</code>'
+            f'<div style="font-size:0.74rem;color:var(--muted);">{T("pipe.hint")}</div>'
+            f'<div style="font-size:0.74rem;margin-top:0.4rem;">{last_line}</div>'
+            f'<div class="pipeline-live" style="font-size:0.74rem;margin-top:0.45rem;padding-top:0.45rem;'
+            f'border-top:1px dashed var(--border);color:var(--muted);">{T("checking")}</div></div>')
+
+
+def render_pipeline_strip():
+    """One always-visible line at the top of <main>, on every view.
+
+    Why it exists: the dashboard is normally read inside DSH's right-sidebar
+    browser, and the reader can be on Figures or Code when a run starts. The
+    status therefore cannot live only on the Checklist tab. The strip is sticky
+    and is refreshed by the same /api/pipeline poll as the full box.
+    """
+    return ('<div class="pipeline-strip" id="pipeline-strip">'
+            f'<span class="pipeline-strip-live">{T("checking")}</span>'
+            '<a class="pipeline-strip-link" href="#" '
+            f'onclick="show(\'checklist_per_analysis\');return false;">{T("pipe.details")} &rarr;</a>'
+            '</div>')
+
+
 def verdict_badge(path, verdicts, run_stamp):
     """Small badge stating the artifact's verdict at the last official run."""
     if not run_stamp:
@@ -3752,37 +4209,10 @@ def render_sample_flow():
 
     html = ""
 
-    # Official pipeline box
-    runs = sorted((ROOT / "audits/pipeline_runs").glob("run_*.json")) \
-        if (ROOT / "audits/pipeline_runs").exists() else []
-    if runs:
-        rep = _json.loads(runs[-1].read_text(encoding="utf-8"))
-        vc = {}
-        for v in rep.get("verdicts", {}).values():
-            vc[v["verdict"]] = vc.get(v["verdict"], 0) + 1
-        ok = rep.get("all_steps_ok")
-        bad = vc.get("changed", 0) + vc.get("missing", 0)
-        warn = vc.get("untouched", 0)
-        sc = "var(--red)" if (not ok or bad) else ("var(--yellow)" if warn else "var(--green)")
-        st = ("FAILED" if not ok else f"{bad} inaccurate" if bad
-              else f"clean, {warn} untouched" if warn else "fully reproduced")
-        total_s = rep.get("total_seconds") or sum(x.get("seconds", 0) for x in rep.get("steps", []))
-        dur = (f"{int(total_s // 60)}m {int(total_s % 60)}s" if total_s >= 60 else f"{int(total_s)}s")
-        last_line = (f'Last official run: <strong>{html_mod.escape(rep["run"])}</strong> &mdash; '
-                     f'<strong style="color:{sc};">{st}</strong>. It took <strong>{dur}</strong> '
-                     f'start to finish &mdash; expect about that when you run it.')
-    else:
-        last_line = '<strong style="color:var(--red);">No official run yet.</strong>'
-    html += (f'<div style="border:1px solid var(--border);background:var(--surface);border-radius:6px;'
-             f'padding:0.8rem 1rem;margin-bottom:1rem;">'
-             f'<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;'
-             f'color:var(--muted);margin-bottom:0.3rem;">The Official Pipeline</div>'
-             f'<code style="display:block;background:var(--surface2);border:1px solid var(--border);'
-             f'border-radius:4px;padding:0.45rem 0.7rem;font-size:0.78rem;margin-bottom:0.4rem;">'
-             f'bash code/run_pipeline.sh</code>'
-             f'<div style="font-size:0.74rem;color:var(--muted);">Re-derives every exhibit from raw '
-             f'data and verdicts each one. Or say <code>/pipeline</code> in a Claude Code session.</div>'
-             f'<div style="font-size:0.74rem;margin-top:0.4rem;">{last_line}</div></div>')
+    # The pipeline box is rendered by render_pipeline_box() so there is exactly
+    # ONE definition of it. This function used to carry a duplicate copy, which
+    # is how two versions of the same panel drift apart.
+    html += render_pipeline_box()
 
     if d.get("drift_vs_previous"):
         items = "".join(f"<li>{html_mod.escape(x)}</li>" for x in d["drift_vs_previous"])
@@ -3992,16 +4422,17 @@ def render_decks():
     none exist yet (the tab is intentionally present even when empty)."""
     decks = scan_html_decks()
     if not decks:
+        # Short on purpose. This pane is usually the ~500px-wide right-sidebar
+        # browser, where a paragraph becomes a tall column of six wrapped lines
+        # that pushes everything else off screen. One line says what to do; the
+        # tab is present-but-empty by design.
         return (
             '<div style="border:1px dashed var(--border);border-radius:8px;'
-            'padding:2rem;text-align:center;color:var(--muted);">'
-            '<div style="font-size:1.1rem;margin-bottom:0.6rem;">No HTML decks yet.</div>'
-            '<div style="font-size:0.82rem;line-height:1.6;max-width:40rem;margin:0 auto;">'
-            'Drop a self-contained deck at <code>decks/html/&lt;slug&gt;/index.html</code> '
-            '(a deck folder) or <code>decks/html/&lt;slug&gt;.html</code> (a single file) '
-            'and it appears here automatically — newest first, embedded live. '
-            'Same serving path as the Reorient deck, so use <kbd>←</kbd>/<kbd>→</kbd> '
-            'navigation inside the deck if it supports it.</div></div>')
+            'padding:1.1rem;color:var(--muted);font-size:0.82rem;line-height:1.55;">'
+            '<div style="font-size:0.95rem;margin-bottom:0.35rem;color:var(--text);">No HTML decks yet.</div>'
+            'Add <code>decks/html/&lt;slug&gt;/index.html</code> (or '
+            '<code>decks/html/&lt;slug&gt;.html</code>) and it appears here, newest '
+            'first, served live.</div>')
 
     # Left rail of deck buttons + one iframe that swaps src.
     # Append the file mtime as a cache-buster so the browser never serves a
@@ -4579,31 +5010,37 @@ def build_page(hypotheses, insights, decisions, pipeline, figures, code_files, d
     # Groups: The Map (Decks · Template), The Checklist (Checklist · Diffs),
     # The Evidence (Figures · Tables · Decisions), The Machinery (Code · Data · Skills & Hooks).
     tabs = [
-        ("decks", "Decks"),
-        ("narrative", "Template"),
-        ("checklist_per_analysis", "Checklist"),
-        ("figures", "Figures"),
-        ("tables", "Tables"),
-        ("decisions", "Decisions"),
-        ("code", "Code"),
-        ("data", "Data"),
-        ("skills_hooks", "Skills & Hooks"),
+        ("decks", T("tab.decks")),
+        ("narrative", T("tab.template")),
+        ("checklist_per_analysis", T("tab.checklist")),
+        ("figures", T("tab.figures")),
+        ("tables", T("tab.tables")),
+        ("decisions", T("tab.decisions")),
+        ("code", T("tab.code")),
+        ("data", T("tab.data")),
+        ("skills_hooks", T("tab.skills")),
     ]
     # Git projects land on a HOME tab (the cassette alone), gain an in-page
     # Chat tab, and gain a Diffs tab (the bounded diff as the unit of verification) — Diffs sits in
     # The Checklist group, right after Checklist. Gated on a local .git dir so a non-git clone stays lean.
     _home = (ROOT / ".git").exists()
     if _home:
-        tabs.insert(0, ("home", "Home"))
+        tabs.insert(0, ("home", T("tab.home")))
         _cl_idx = next(i for i, (tid, _) in enumerate(tabs) if tid == "checklist_per_analysis")
-        tabs[_cl_idx + 1:_cl_idx + 1] = [("diffs", "Diffs")]
-    _default_tab = "home" if _home else "decks"
-    nav_groups = {"decks": "The Map", "checklist_per_analysis": "The Checklist",
-                  "figures": "The Evidence", "code": "The Machinery"}
-    group_classes = {"The Map": "group-map", "The Checklist": "group-checklist",
-                     "The Evidence": "group-evidence", "The Machinery": "group-machinery"}
+        tabs[_cl_idx + 1:_cl_idx + 1] = [("diffs", T("tab.diffs"))]
+    # Landing view. `decks` was the old default and it is an empty placeholder in
+    # any project that ships no HTML decks -- a bad first screen, and now a visible
+    # one because the client plugin opens the dashboard by itself. Checklist is the
+    # "where am I, what is the pipeline doing, which gates are open" screen.
+    _default_tab = "home" if _home else "checklist_per_analysis"
+    nav_groups = {"decks": T("nav.map"), "checklist_per_analysis": T("nav.checklist"),
+                  "figures": T("nav.evidence"), "code": T("nav.machinery")}
+    group_classes = {T("nav.map"): "group-map", T("nav.checklist"): "group-checklist",
+                     T("nav.evidence"): "group-evidence", T("nav.machinery"): "group-machinery"}
 
     nav_html = f'<div class="title">Mixtape Harness</div><button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Theme: auto / light / dark"><span class="theme-icon" id="theme-icon">&#9790;</span><span id="theme-label">Dark</span></button>'
+    nav_html += (f'<button class="theme-toggle" id="lang-toggle" onclick="toggleLang()" '
+                 f'title="{html_mod.escape(T("i18n.note"))}">{html_mod.escape(T("lang.btn"))}</button>')
     for tab_id, tab_label in tabs:
         if tab_id in nav_groups and nav_groups[tab_id] is not None:
             grp = nav_groups[tab_id]
@@ -4631,26 +5068,27 @@ def build_page(hypotheses, insights, decisions, pipeline, figures, code_files, d
 
     _ph = 'color:var(--muted);font-size:0.85rem;line-height:1.6;max-width:60ch;padding:1.5rem;border:1px dashed var(--border);border-radius:8px;background:var(--surface);'
     views = f"""
-    <div class="view{' active' if _home else ''}" id="v-home"><h2>Verification Debt</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Where you always land. The scale weighs work <em>produced</em> (commits) against work <em>verified</em> (diffs you reviewed) — accept a diff in the Diffs tab and it settles live. Today's to-do (from <code>TODAY.md</code>) and the scale both live on the Diffs tab. All the way down to <code>&lt;pre class="cassette"&gt;</code>.</p>{render_home() if _home else ''}</div>
-    <div class="view{'' if _home else ' active'}" id="v-decks"><h2>Decks</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Self-contained HTML decks under <code>decks/html/</code>, embedded live and newest-first. Pick one from the rail; it renders in place.</p>{render_decks()}</div>
+    <div class="view{' active' if _default_tab == 'home' else ''}" id="v-home"><h2>Verification Debt</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Where you always land. The scale weighs work <em>produced</em> (commits) against work <em>verified</em> (diffs you reviewed) — accept a diff in the Diffs tab and it settles live. Today's to-do (from <code>TODAY.md</code>) and the scale both live on the Diffs tab. All the way down to <code>&lt;pre class="cassette"&gt;</code>.</p>{render_home() if _home else ''}</div>
+    <div class="view{' active' if _default_tab == 'decks' else ''}" id="v-decks"><h2>Decks</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Self-contained HTML decks under <code>decks/html/</code>, embedded live and newest-first. Pick one from the rail; it renders in place.</p>{render_decks()}</div>
     <div class="view" id="v-narrative"><h2>Template</h2>{reorient_html}<p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">The research-appendix genre — the standing pattern the write-up follows. The empty form; no project findings.</p>{render_narrative(hypotheses, insights)}</div>
-    <div class="view" id="v-checklist_per_analysis"><h2>Checklist</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">The methodological gate upstream of everything. <strong>Click an analysis row</strong> to open its stages and their exhibits in place — each figure/table flips from the exhibit to its description to the scrollable source code that made it (Esc backs out). Per-analysis grid + Step 0 package cards below. Every DiD analysis instantiates <code>analyses/&lt;slug&gt;/checklist.md</code> from the template — the AI invokes <code>/checklist</code> to walk Steps 0–9.</p>{render_checklist_per_analysis()}</div>
+    <div class="view{' active' if _default_tab == 'checklist_per_analysis' else ''}" id="v-checklist_per_analysis"><h2>{T("cl.h2")}</h2>{render_pipeline_box()}<p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">{T("cl.intro")}</p>{render_checklist_per_analysis()}</div>
     <div class="view" id="v-diffs"><h2>Diffs</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Local git history for this project — the <strong>bounded diff as the unit of verification</strong>. Click a commit card and it floats open into a full-screen view — the front shows only what changed (green added / red removed); hit "Show full context" to expand, or flip the card for authored/committed dates and the review sign-off. Use ← → to walk commits. Mark a commit reviewed once you agree with it — that pays down verification debt and the scale settles live. Read-only on git: the dashboard runs <code>git log</code>/<code>git show</code> only, never commits or pushes. Today's to-do (from <code>TODAY.md</code>, written by <code>/amnesia</code>) sits at the top — cross an item off to strike it through.</p>{render_diffs()}</div>
-    <div class="view" id="v-figures"><h2>Figures</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Flip-card gallery of figures in <code>output/figures/</code>. Click a figure to open it full-size — it spins in, <strong>F</strong> goes true fullscreen, <strong>&larr; &rarr;</strong> cycle between figures, <strong>Esc</strong> returns.</p>{render_figures(figures, insights) if figures else f'<div style="{_ph}">Empty until the pipeline emits figures to <code>output/figures/</code> — nothing appears here that a script did not produce.</div>'}</div>
-    <div class="view" id="v-tables"><h2>Tables</h2><div style="{_ph}">Flip-card gallery of pipeline-produced tables. Each card shows a table with the source script that generated it and a status badge; click to flip for provenance and approval state. This tab is populated automatically once the analysis pipeline emits tables to <code>output/tables/</code>. It is empty until then — every table shown traces back to a wired script.</div></div>
+    <div class="view" id="v-figures"><h2>{T("fig.h2")}</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">{T("fig.intro")}</p>{render_figures(figures, insights) if figures else f'<div style="{_ph}">Empty until the pipeline emits figures to <code>output/figures/</code> — nothing appears here that a script did not produce.</div>'}</div>
+    <div class="view" id="v-tables"><h2>{T("tbl.h2")}</h2>{render_pipeline_box()}<p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">{T("tbl.intro")}</p>{render_tables()}</div>
     <div class="view" id="v-decisions"><h2>Decisions</h2><div style="{_ph}">Audit trail of binding design decisions. Each entry records the choice that was made, the alternatives that were considered, and the rationale for the pick — so every downstream number can be traced back to a logged decision. Once a decision is committed here, every script downstream must respect it. Empty until the first decision is logged.</div></div>
     <div class="view" id="v-code"><h2>Code</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">The workshop. Pipeline = verified and approved. For Review = needs verification. Sandbox = experimental.</p>{render_code_unified(pipeline, code_files)}</div>
     <div class="view" id="v-data"><h2>Data</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">Raw source datasets. What we have, where it came from, what consumes it. The raw materials — immutable, never edited in place.</p>{render_data(data_entries)}</div>
     <div class="view" id="v-skills_hooks"><h2>Skills &amp; Hooks</h2><p style="color:var(--muted);font-size:0.78rem;margin-bottom:1rem;">The harness you actually work with. <strong>Skills</strong> are commands you invoke in the Claude Code terminal; <strong>Hooks</strong> are silent guardrails that fire on every tool call. Toggle between them, then flip through the index cards — front is what it does, back is how it's used. Use &#8592; &#8594; or the arrows; click a card to flip.</p>{render_skills_hooks()}</div>
     """
 
-    return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Mixtape Harness</title>
+    return f"""<!DOCTYPE html><html lang="{LANG}"><head><meta charset="utf-8"><title>Mixtape Harness</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
     <style>{CSS}</style></head><body>
-    <nav>{nav_html}</nav><main>{render_epigraph()}{views}</main>
+    <nav>{nav_html}</nav><main>{render_pipeline_strip()}{render_epigraph()}{views}</main>
     <script>window.PIN_STAGES = {json_top.dumps(list_analysis_stages())};</script>
+    <script>window.I18N_LIVE = {json_top.dumps({k: (v.get(LANG) or v.get("en")) for k, v in I18N_LIVE.items()}, ensure_ascii=False)};</script>
     <script>{JS}</script></body></html>"""
 
 
@@ -4683,9 +5121,18 @@ def get_script_tier(script_path):
 
 class DashboardHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        global ROOT
+        global ROOT, LANG
         parsed = urlparse(self.path)
         qs = parse_qs(parsed.query)
+
+        # Language: ?lang= wins (the toggle's first hop), else the cookie it set,
+        # else English. Read before anything is rendered.
+        _ql = (qs.get("lang", [""])[0] or "").lower()
+        if _ql in LANGS:
+            LANG = _ql
+        else:
+            _m = re.search(r"(?:^|;\s*)dsh-lang=([A-Za-z-]+)", self.headers.get("Cookie", "") or "")
+            LANG = _m.group(1).lower() if (_m and _m.group(1).lower() in LANGS) else "en"
 
         # Project switching via ?project=dirname
         if "project" in qs:
@@ -4721,6 +5168,55 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(fp.read_bytes())
             else:
                 self.send_error(404, f"Not found: {path}")
+        elif parsed.path == "/api/health":
+            # Liveness + identity. Read by the DSH client plugin to notice when the
+            # dashboard has been ACTIVATED, so it can open the right-sidebar
+            # browser on it. `instance` changes on every process start, which is
+            # what separates "a new activation" from "a reload of a page whose
+            # dashboard never stopped" -- otherwise every reload pops a new tab.
+            METRICS["health_hits"] += 1
+            # The DSH client plugin reports back here after it tries to open the
+            # sidebar tab: ?report=opened or ?report=error. This is the only way
+            # to tell "the plugin is alive and polling" apart from "the tab
+            # actually opened", which look identical from the server side.
+            _report = qs.get("report", [""])[0]
+            if _report == "opened":
+                METRICS["opened"] += 1
+            elif _report == "error":
+                METRICS["open_errors"] += 1
+            body = json_top.dumps({
+                "ok": True,
+                "service": "mixtape-harness-dashboard",
+                "instance": DASHBOARD_INSTANCE,
+                "port": PORT,
+                "lang": LANG,
+                # How many times /api/health has been hit since this process
+                # started. Requests from anyone count, so the useful reading is
+                # the RATE: several per minute with nobody curling means the
+                # client plugin is polling. The dashboard also tells the plugin
+                # to stop polling a build that has this field, since that is the
+                # one that can be asked.
+                "health_hits": METRICS["health_hits"],
+                "opened_reports": METRICS["opened"],
+                "open_errors": METRICS["open_errors"],
+            }).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif parsed.path == "/api/pipeline":
+            # Live pipeline state for the poller in render_pipeline_box(). Read-only.
+            body = json_top.dumps(pipeline_state()).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif parsed.path == "/api/git-log":
             # READ-ONLY commit list for the active project (newest first). Never writes.
             # Returns JSON [{hash, short, date, subject, reviewed}]; empty list if not a git repo.

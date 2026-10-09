@@ -7,8 +7,14 @@ reorient/
 data/raw/*.dta
 *.bak_*
 
-# per-project analysis outputs (not the harness)
-/code/
+# per-project analysis outputs (not the harness).
+# EXCEPT the harness's own two entry points: /pipeline and /dashboard are skills
+# that invoke `code/run_pipeline.sh` and `code/open_dashboard.sh` by exact path, so
+# a clone without them has two broken skills. Everything else under code/ is
+# per-project.
+/code/*
+!/code/run_pipeline.sh
+!/code/open_dashboard.sh
 /output/
 /data/
 Rplots.pdf
@@ -16,9 +22,20 @@ Rplots.pdf
 analyses/*
 !analyses/_template/
 !analyses/_template/**
+# The walked Brazil CAPS example ships. The README points at it as a runnable
+# illustration with real numbers and real open gates; an example that cannot be
+# cloned is not an example. Its data/, like every analysis's, stays out.
+!analyses/brazil_caps/
+!analyses/brazil_caps/**
 
 # Word lock files
 ~$*
 
 # disposable /amnesia today note, regenerated every invocation (same rule as reorient/)
 TODAY.md
+
+# The pipeline's live status file (audits/pipeline_runs/current.json) is rewritten
+# before every step, so it is STATE, not a record -- committing it would churn on
+# every run and say nothing. The dated run_<stamp>.json reports beside it are the
+# record, and they ship.
+audits/pipeline_runs/current.json
