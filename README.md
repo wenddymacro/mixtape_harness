@@ -30,6 +30,8 @@ session's catalog and its guardrails fire on every tool call.
    verdicts are all shown in colour.
 3. **Start a project.** `/newproject` scaffolds; then `/covariates` if the design is DiD, and walk
    `checklists/` one stage at a time. Each analysis lives in `analyses/<slug>/` with per-stage rooms.
+4. **For the do-this-then-that version, follow [`GUIDE.md`](GUIDE.md)** — install, first five minutes,
+   getting data in, walking the checklist, reading the dashboard, verifying, signing off.
 
 ---
 
