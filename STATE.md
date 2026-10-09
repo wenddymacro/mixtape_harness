@@ -378,6 +378,41 @@ plugin manager for subdirectory handling, found none, and wrote the limitation i
 body. The capability was in a dependency, one layer down, and the fix took one web search plus two
 five-second installs.
 
+## A STEP-BY-STEP USER GUIDE, ALSO BILINGUAL (2026-10-09)
+
+`GUIDE.md` + `GUIDE.zh.md` — the *do this, then that* document, which the README was never meant to be.
+Ten numbered steps from install to sign-off, plus a "known gaps" section:
+
+```
+  0 before you start        5 walk the checklist (canisters, ACTIVE_STAGE, LOCKED, steps 0–9)
+  1 install (both addresses) 6 build the pipeline (one script per deliverable, the verdicts)
+  2 first five minutes      7 read the dashboard (grid, badges, strip, language)
+  3 start a project         8 verify (/pipeline, /blindspot, /referee2, /drift-sweep, /bibcheck)
+  4 get data in and seal it 9 every session (/amnesia → STATE.md → /sleep)
+                           10 before you publish (sign-off, manifest, cards)
+```
+
+**The guide refuses to invent anything.** Every command in it was checked against what actually exists,
+and four gaps are written down rather than glossed: `scripts/r/_manifest.R` is referenced by the checklist
+but **not shipped**; `CLAUDE.md` and the shipped scripts disagree about where an analysis keeps its data;
+`/covariates` was never run for the example; and `analyses/*/data/` is gitignored, so a clone cannot
+re-run a pipeline without intaking the data again.
+
+**The pair test grew up, and it had two blind spots of its own** — both now fixed, both worth remembering:
+
+1. It only knew about README, so a whole second pair could drift unchecked. It now iterates
+   `[README, GUIDE]`, checking a link each way and equal `##` / `###` / code-block / table-row counts.
+2. Its fence regex was `/^```/`, which **does not match a block indented inside a numbered list** — and
+   the guide indents most of its blocks. A count that silently ignores half the document is worse than no
+   count. Now `/^\s*```/`.
+
+Verified in both directions: deleting one fence line from the Chinese guide turns the suite red
+(`expected 10, got 9`); restoring turns it green. **110 passed, 0 failed.**
+
+**Its limit, stated because it matters:** this is a *structural* drift detector, not a semantic one.
+Retitling a Chinese heading is not caught. It catches the realistic failure — you edit one side and forget
+the other — not mistranslation.
+
 ## NEXT
 
 1. **Answer the version question** (gate 2): upgrade `did` to ≥ 2.5.1 and re-run `31_`/`32_`,

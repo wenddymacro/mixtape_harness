@@ -277,38 +277,54 @@ if (fs.existsSync(clientPath)) {
   ok('the packed bundle ships the built client half', manifest.files?.includes('lib/client.js'))
 }
 
-// ------------------------------------------------------------ the bilingual pair
+// ------------------------------------------------------------ the bilingual pairs
 // Two documents that are supposed to say the same thing WILL drift apart, and
 // only a machine notices -- which is the whole thesis of this harness, applied to
 // its own front door. DSH records an en/zh hash per section for exactly this
 // (README.i18n.yaml, `pnpm run verify-translation-pairing`); this is the
-// dependency-free version of that idea: same shape, same numbers, and a link
-// each way, so editing one side and forgetting the other fails here.
-console.log('the bilingual README pair')
-const readmeEn = path.join(ROOT, 'README.md')
-const readmeZh = path.join(ROOT, 'README.zh.md')
-ok('README.md exists', fs.existsSync(readmeEn))
-ok('README.zh.md exists', fs.existsSync(readmeZh))
+// dependency-free version: same shape, same numbers, a link each way.
+//
+// Two blind spots in the first version of this check, both fixed here, both
+// instructive:
+//   * it only knew about README, so a whole second pair could drift unchecked;
+//   * its fence regex was /^```/, which does not match a block INDENTED inside a
+//     numbered list -- and the guide indents most of its blocks. A count that
+//     silently ignores half the document is worse than no count.
+console.log('the bilingual doc pairs')
+const DOC_PAIRS = [['README.md', 'README.zh.md'], ['GUIDE.md', 'GUIDE.zh.md']]
+const countOf = (text, re) => (text.match(re) ?? []).length
+const escapeRe = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-if (fs.existsSync(readmeEn) && fs.existsSync(readmeZh)) {
-  const en = fs.readFileSync(readmeEn, 'utf8')
-  const zh = fs.readFileSync(readmeZh, 'utf8')
-  const count = (text, re) => (text.match(re) ?? []).length
+for (const [enName, zhName] of DOC_PAIRS) {
+  const enPath = path.join(ROOT, enName)
+  const zhPath = path.join(ROOT, zhName)
+  ok(`${enName} exists`, fs.existsSync(enPath))
+  ok(`${zhName} exists`, fs.existsSync(zhPath))
+  if (!fs.existsSync(enPath) || !fs.existsSync(zhPath)) continue
 
-  ok('the English README links to the Chinese one', /\[中文\]\(README\.zh\.md\)/.test(en))
-  ok('the Chinese README links back to the English one', /\[English\]\(README\.md\)/.test(zh))
+  const en = fs.readFileSync(enPath, 'utf8')
+  const zh = fs.readFileSync(zhPath, 'utf8')
 
-  check('the pair has the same number of ## sections',
-        count(zh, /^## /gm), count(en, /^## /gm))
-  check('the pair has the same number of ### sections',
-        count(zh, /^### /gm), count(en, /^### /gm))
-  check('the pair has the same number of fenced code blocks',
-        count(zh, /^```/gm), count(en, /^```/gm))
+  ok(`${enName} links to ${zhName}`, new RegExp(`\\[中文\\]\\(${escapeRe(zhName)}\\)`).test(en))
+  ok(`${zhName} links back to ${enName}`, new RegExp(`\\[English\\]\\(${escapeRe(enName)}\\)`).test(zh))
 
-  // The numbers a reader is asked to believe must be on BOTH sides. A revision
-  // that updates one language and not the other is the drift this catches.
+  check(`${enName}/${zhName}: same number of ## sections`,
+        countOf(zh, /^## /gm), countOf(en, /^## /gm))
+  check(`${enName}/${zhName}: same number of ### sections`,
+        countOf(zh, /^### /gm), countOf(en, /^### /gm))
+  check(`${enName}/${zhName}: same number of fenced code blocks (indented ones included)`,
+        countOf(zh, /^\s*```/gm), countOf(en, /^\s*```/gm))
+  check(`${enName}/${zhName}: same number of table rows`,
+        countOf(zh, /^\s*\|/gm), countOf(en, /^\s*\|/gm))
+}
+
+// The numbers a reader is asked to believe must be on BOTH sides of the README.
+// A revision that updates one language and not the other is the drift this catches.
+{
+  const en = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8')
+  const zh = fs.readFileSync(path.join(ROOT, 'README.zh.md'), 'utf8')
   for (const figure of ['82,140', '5,476', '+0.2098', '0.684', '159']) {
-    ok(`both sides state ${figure}`, en.includes(figure) && zh.includes(figure))
+    ok(`both READMEs state ${figure}`, en.includes(figure) && zh.includes(figure))
   }
 }
 
