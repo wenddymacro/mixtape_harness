@@ -31,17 +31,29 @@
 
 ### 用 git 地址安装
 
-安装对话框接受:包名、**Git 地址**、tarball,或本地绝对路径。Git 形式就是一个普通的仓库地址 —— DSH 自己的示例是 `https://github.com/author/dsh-plugin`:
+安装对话框接受:包名、**Git 地址**、tarball,或本地绝对路径。本仓库的两个 bundle 各有一个地址:
+
+| Bundle | 粘进 **Add plugin** 的内容 |
+|---|---|
+| **技能 + 仪表盘**(仓库根目录) | `https://github.com/wenddymacro/mixtape_harness` |
+| **护栏**(`dsh-guards/`) | `https://github.com/wenddymacro/mixtape_harness.git#path:/dsh-guards` |
 
 1. 侧栏 → **Plugins** → **Add plugin**。
-2. 粘贴仓库地址,例如 `https://github.com/<owner>/<repo>`。
+2. 粘贴上面两个地址之一。
 3. **Install**,装完后点 **Enable now**。
 4. 看返回的 `application` 字段:**`applied`** 才代表改动生效了 —— 不是看服务端日志。
 5. 开一个**新会话**,在目录里找 `amnesia`、`dashboard`、`pipeline`、`referee2`。
 
-> **护栏那个 bundle 的 git 安装地址这里不写**,因为它位于本仓库的*子目录*里,而安装对话框收的是包规格,不是子目录。请用本地检出路径安装 —— `<检出路径>/dsh-guards` —— 或者把它拆成独立仓库。子目录那种形式**没有验证过**,所以我不声称它能用。
+`#path:` 是 pnpm 的 git monorepo 子目录写法 —— 对话框收的是包规格,而规格就是这样指名子目录的。上面两个地址在写进来之前,**都用 DSH 自带的 pnpm(v11.7.0)实际解析并安装过**:
 
-> **实际走过的是哪条路。** 本仓库的开发和所有验证,走的都是**本地路径**那条。git 那条路是照 DSH 自己文档里的形式写的,**没有在这里跑过** —— 如果你用了它并遇上问题,那处差异是第一个该怀疑的地方。
+```
+  https://github.com/wenddymacro/mixtape_harness
+      → @local/mixtape-harness 2.1.0                  (index.js、lib/、skills/、cordis.patch.yml)
+  https://github.com/wenddymacro/mixtape_harness.git#path:/dsh-guards
+      → @local/mixtape-harness-guards 1.0.6           (dsh.bundle.patch: ./cordis.patch.yml)
+```
+
+**这句话的边界:** 验证的是**规格** —— 用的是安装器背后同一个解析器。**Plugins 对话框本身这次没有点过**,所以哪一步出问题,该怀疑的是对话框,不是地址。
 
 ### 用本地检出安装
 
