@@ -44,24 +44,35 @@ Two bundles live in this repo. Install them from the DSH sidebar's **Plugins** p
 
 ### From a git address
 
-The install dialog accepts a package name, **a Git address**, a tarball, or an absolute local path. The
-Git form is an ordinary repository URL — DSH's own example is `https://github.com/author/dsh-plugin`:
+The install dialog accepts a package name, **a Git address**, a tarball, or an absolute local path. Both
+bundles in this repo have one:
+
+| Bundle | Paste this into **Add plugin** |
+|---|---|
+| **Skills + dashboard** (repo root) | `https://github.com/wenddymacro/mixtape_harness` |
+| **Guardrails** (`dsh-guards/`) | `https://github.com/wenddymacro/mixtape_harness.git#path:/dsh-guards` |
 
 1. Sidebar → **Plugins** → **Add plugin**.
-2. Paste the repository URL, for example `https://github.com/<owner>/<repo>`.
+2. Paste one of the two addresses above.
 3. **Install**, then **Enable now** when it finishes.
 4. Read the returned `application` field: **`applied`** is what means the change is live — not the
    server logs.
 5. Start a **new session** and check the catalog for `amnesia`, `dashboard`, `pipeline`, `referee2`.
 
-> **Git install for the guardrails bundle is not documented here as a URL**, because it lives in a
-> *subdirectory* of this repo and the install dialog takes a package spec, not a subdirectory. Install it
-> from a local checkout — `<path-to-checkout>/dsh-guards` — or split it into its own repository. The
-> subdirectory form was **not verified**, so it is not claimed.
+The `#path:` parameter is pnpm's git-monorepo subdirectory form — the dialog takes a package spec, and
+that is how a spec names a subdirectory. Both addresses above were **resolved and installed with the
+bundled pnpm (v11.7.0)** before being written here:
 
-> **What was actually exercised.** Development and every verification in this repo went through the
-> **local-path** route. The Git route follows DSH's own documented form and has **not** been run here — if
-> you use it and it misbehaves, that difference is the first thing to suspect.
+```
+  https://github.com/wenddymacro/mixtape_harness
+      → @local/mixtape-harness 2.1.0                  (index.js, lib/, skills/, cordis.patch.yml)
+  https://github.com/wenddymacro/mixtape_harness.git#path:/dsh-guards
+      → @local/mixtape-harness-guards 1.0.6           (dsh.bundle.patch: ./cordis.patch.yml)
+```
+
+**The boundary of that claim:** the *specs* were verified against the same resolver the installer drives.
+The **Plugins dialog itself was not clicked through** in this session — so if a step misbehaves, the
+dialog is the part to suspect, not the address.
 
 ### From a local checkout
 

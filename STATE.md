@@ -309,9 +309,9 @@ turned the suite red with exactly those two failures; restoring turned it green.
 DSH does the same thing more thoroughly with a per-section en/zh hash record (`README.i18n.yaml`,
 `pnpm run verify-translation-pairing`); this is the dependency-free version of that idea.
 
-**Outstanding for the GitHub push:** the READMEs use `<owner>/<repo>` placeholders in the Git-install
-section — replace them with the real repository URL. This working copy is **not a git repository**, so
-the push itself is the researcher's to do.
+**RESOLVED (2026-10-09):** the `<owner>/<repo>` placeholders are gone — the READMEs now carry the real
+repository URL, and every install address in them was resolved and installed before being written down.
+See *The install addresses are real, and tested* below.
 
 ### PUSHED — PR #2 (2026-10-09)
 
@@ -340,9 +340,43 @@ used `git -c credential.helper='!gh auth git-credential' push …` — the comma
 writing `credential.helper` into the user's global git config. Network needs the dead proxy unset
 (`unset http_proxy https_proxy …`), same as every clone in this session.
 
-**Still unverified after the push:** the **Git install route**. It follows DSH's own documented form
-(`https://github.com/author/dsh-plugin`) but was never exercised — every install here went through the
-local-path route. The README says so instead of implying otherwise.
+**After the push:** PR #2 was **merged** by wenddymacro, so `main` now carries the bundle. That is what
+made the Git-install addresses testable — see below.
+
+### The install addresses are real, and tested (2026-10-09)
+
+The READMEs used to say the guardrails bundle had **no** URL, because it lives in a subdirectory and I
+could not find a subdirectory form in the DSH source. That was the right caution and the **wrong
+conclusion**: the form exists one layer down, in pnpm. Its documentation covers git monorepos with a
+`path:` parameter ([pnpm package sources](https://pnpm.io/10.x/package-sources)):
+
+```
+  pnpm add RexSkz/test-git-subfolder-fetch#path:/packages/simple-react-app
+```
+
+DSH's installer drives pnpm, and its dialog takes a spec "as pnpm accepts it", so that form reaches the
+subdirectory. DSH ships its own pnpm, which means the claim could be **tested instead of cited**:
+
+```
+  /Applications/DeepSeek Harness.app/Contents/Resources/runtime/pnpm/bin/pnpm.cjs   (v11.7.0)
+
+  pnpm add https://github.com/wenddymacro/mixtape_harness
+      → @local/mixtape-harness 2.1.0            index.js, lib/, skills/, cordis.patch.yml
+  pnpm add https://github.com/wenddymacro/mixtape_harness.git#path:/dsh-guards
+      → @local/mixtape-harness-guards 1.0.6     dsh.bundle.patch: ./cordis.patch.yml
+```
+
+Both are now **in the READMEs, as the install instruction** — a documented address that was resolved and
+installed before being written down, rather than a placeholder with an apology.
+
+**The boundary, stated in the README rather than only here:** the *specs* were verified against the same
+resolver the installer drives. The **Plugins dialog was not clicked through**. If a step misbehaves, the
+dialog is the part to suspect — not the address.
+
+**The generalisable lesson.** "Not found in the source I read" is not "does not exist". I searched the DSH
+plugin manager for subdirectory handling, found none, and wrote the limitation into two READMEs and a PR
+body. The capability was in a dependency, one layer down, and the fix took one web search plus two
+five-second installs.
 
 ## NEXT
 
