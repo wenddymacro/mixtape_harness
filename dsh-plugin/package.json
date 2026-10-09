@@ -3,10 +3,5 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Exposes this harness's skills/ directory to every DSH session in the profile, as a deployment-level skill provider.",
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  }
+  "description": "RETIRED (tombstone) - superseded by the bundle at the repository root. The dsh.bundle declaration was removed on purpose, so the plugin installer rejects this directory as not-a-bundle rather than installing a bundle that silently finds no skills on this machine. See README.md."
 }

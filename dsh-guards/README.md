@@ -189,6 +189,53 @@ how it runs. Both make a check weaker than it reads:
 * Only whole-line comments are skipped when scanning the runner. A **trailing**
   comment (`# python3 code/x.py` at the end of a code line) counts as wired.
 
+## Over-block found in anger (2026-10-09) — `no-offbook-exhibit` reads the whole command
+
+The first live run of this bundle against a real analysis produced a **false
+positive**, which the case matrix does not cover because every case in it is a
+single-purpose command.
+
+The trigger was a command that did two unrelated things in one shell line:
+
+```bash
+Rscript -e 'cat("sf:", as.character(packageVersion("sf")), "\n")' \
+  && Rscript scripts/r/02_bite_maps.R ; ls -la output/figures/
+```
+
+`guardOffbook` asks two questions of the *entire command string*:
+
+1. `INLINE_CODE_RE` — is there an inline `Rscript -e` / `python -c`? → **yes**
+   (the harmless version probe)
+2. `PLOT_RE` — is there any plotting token or an `output/figures` /
+   `output/tables` path? → **yes** (the `ls`)
+
+Both true ⇒ blocked, with a message telling the user to put "the plot" in a
+named script. There was no plot. The `output/figures` mention came from an `ls`
+of the directory, and the inline code printed a version string.
+
+**Why this is inherent to the rule and not a porting bug.** The Python original
+regexed the same whole `command` field, so it over-blocks identically; the port
+reproduces the behaviour faithfully. The fix is a judgement call about what the
+check *enforces*, which is why it is written down here rather than changed
+unilaterally. A faithful tightening would take the text between the `-c`/`-e`
+flag and the end of its quoted argument and test `PLOT_RE` against **that slice**
+only — an inline call that does not itself plot would then pass while an inline
+call that does would still be caught. That is a real behavioural change and
+belongs with whoever owns the rule.
+
+**Workarounds that work today** (all three verified in this session):
+
+* Split the command — run the inspection in its own tool call, no inline
+  `-e` in the same string as an `output/` path.
+* Prefix with `SCRATCH_RUN=1 ` when the inline work is deliberate throwaway.
+* Call the named script alone (`Rscript scripts/r/02_bite_maps.R`) — a command
+  that names a producer file is exactly what the rule wants.
+
+**Blast radius.** The block is loud and shows the reason, so the cost is one
+retry, not a silent wrong answer. It only fires when an inline interpreter call
+and an `output/` path or plotting token coexist in one command — a shape that is
+easy to avoid once known, and harmless when it does fire.
+
 ## Install
 
 Sidebar → **Plugins** → install a bundle, absolute path:

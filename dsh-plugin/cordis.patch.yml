@@ -1,30 +1,16 @@
-# mixtape_harness -> DSH: expose this harness's skills to the agent.
+# RETIRED (tombstone) - this file used to insert a skill-filesystem row whose
+# customSkillDirs was a hardcoded absolute path:
 #
-# This bundle ships NO JavaScript. It only inserts one row naming a package that
-# already ships with dsh (`@deepseek-ai/dsh-skill-filesystem`), configured to
-# read the harness's own `skills/` directory.
+#     - 'C:/Users/english/Documents/mixtape/mixtape_harness/skills'
 #
-# Why the skills need a bundle at all: the DSH Web app disables the host
-# `skill-filesystem` row and lets each agent preset mount its own — and preset
-# rows are read-only. Deployment-level providers, however, register into the
-# GLOBAL layer of the skill registry, which every agent's scope chain reads. So
-# a bundle is the supported way to contribute skills deployment-wide. The
-# preset's own discovery row is left completely untouched.
+# DSH runs customSkillDirs entries through path.resolve, so the path had to be
+# absolute, and an absolute path is wrong on every other machine -- this bundle
+# installed cleanly on macOS and Linux and then found no skills, silently.
 #
-# `includeDefaultRoots: false` keeps this provider isolated: it scans ONLY the
-# directory below, so it cannot double-register the project/user/bundled roots
-# that the preset's provider already covers.
+# The path is gone rather than parameterised. `index.js` at the repository root
+# derives <this package>/skills from its own module URL and mounts the shipped
+# provider itself, so there is nothing machine-specific left to write here.
 #
-# Deeper notes and the install/verify/rollback steps: see README.md.
-
-- insert:
-    - id: mixtape-harness-skills
-      name: '@deepseek-ai/dsh-skill-filesystem'
-      config:
-        providerName: mixtape-harness
-        includeDefaultRoots: false
-        # >>> THE ONE MACHINE-SPECIFIC VALUE. Point this at YOUR checkout of
-        #     mixtape_harness. Keep it absolute; forward slashes work on both
-        #     Windows and POSIX.
-        customSkillDirs:
-          - 'C:/Users/english/Documents/mixtape/mixtape_harness/skills'
+# The bundle at the repository root is the live one. See ../README.md
+# ("Install under DSH") and ./README.md.
+[]

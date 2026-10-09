@@ -1,0 +1,22 @@
+# mixtape_harness -> DSH: expose this checkout's skills/ to every session.
+#
+# ONE row, naming this same package. There is deliberately no config here, and
+# no path of any kind: index.js computes <this package>/skills from its own
+# module URL (import.meta.url) and mounts DSH's shipped local skill provider on
+# that directory.
+#
+# That is the whole point of this shape. A path written here would have to be
+# absolute (the provider runs customSkillDirs through path.resolve, so `~` is not
+# expanded and a relative path depends on the server's cwd), which would make
+# this file machine-specific -- the original Windows-only version of this bundle
+# hardcoded 'C:/Users/english/...' and silently found no skills anywhere else.
+# Keep this file path-free. test.mjs asserts that it stays that way.
+#
+# STATUS: the row and index.js are written and unit-tested (node test.mjs), but
+# this bundle has NOT been activated in a DSH profile yet, so nothing here is
+# yet evidence that it fires. The plugin logs loudly instead of failing silently.
+# See README.md ("Install under DSH") for the install, verify, and rollback steps.
+
+- insert:
+    - id: mixtape-harness-skills
+      name: '@local/mixtape-harness'
